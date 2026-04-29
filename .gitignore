@@ -43,3 +43,4 @@ genkit.log
 # Firebase
 /public/firebase-config.js
 .env
+.env
