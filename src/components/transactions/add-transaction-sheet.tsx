@@ -24,10 +24,10 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Loader2, Lock, Plus, PlusCircle, Eye, AlertTriangle } from 'lucide-react';
+import { CalendarIcon, Loader2, Lock, Plus, PlusCircle, Eye, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
-import { format, parseISO, getYear, getMonth, subDays } from 'date-fns';
+import { format, parseISO, getYear, getMonth, subDays, addDays } from 'date-fns';
 import { useApp } from '@/lib/provider';
 import { useToast } from '@/hooks/use-toast';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -365,6 +365,14 @@ export default function AddTransactionSheet({
     toast({ title: "Micro-category Added", description: `"${microcategoryData.name}" was added.` });
   };
 
+  const shiftDate = (days: number) => {
+    const currentDate = form.getValues('date');
+    if (currentDate) {
+      const newDate = days > 0 ? addDays(currentDate, days) : subDays(currentDate, Math.abs(days));
+      form.setValue('date', newDate, { shouldDirty: true, shouldValidate: true });
+    }
+  };
+
   const sheetTitle = isEditing ? 'Edit Transaction' : 'Add a New Transaction';
     
   const chipRadioClasses = "cursor-pointer rounded-full border border-border px-3 py-1.5 text-sm transition-colors peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary peer-data-[state=checked]:text-primary-foreground";
@@ -459,13 +467,23 @@ export default function AddTransactionSheet({
                         <FormItem className="col-span-2">
                           <FormLabel className="block">Date</FormLabel>
                           <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() => shiftDate(-1)}
+                              title="Previous Day"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            
                             {settings.dateInputStyle === 'popup' ? (
                               <Popover>
                                 <PopoverTrigger asChild>
                                   <FormControl>
                                     <Button
                                       variant={'outline'}
-                                      className={cn('w-full pl-3 text-left font-normal', !field.value && 'text-muted-foreground')}
+                                      className={cn('flex-1 pl-3 text-left font-normal', !field.value && 'text-muted-foreground')}
                                     >
                                       {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
                                       <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
@@ -482,9 +500,21 @@ export default function AddTransactionSheet({
                                 selected={field.value}
                                 onSelect={field.onChange}
                                 disabled={(date) => date > new Date() || date < new Date('1900-01-01')}
-                                className="rounded-md border inline-block"
+                                className="rounded-md border inline-block flex-1"
                               />
                             )}
+                            
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() => shiftDate(1)}
+                              title="Next Day"
+                              disabled={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')}
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
+
                              <Button
                                 type="button"
                                 variant="outline"
