@@ -11,6 +11,7 @@ export type FeatureAccess = {
   reminders?: boolean;
   logs?: boolean;
   borrowings?: boolean;
+  insurance?: boolean;
 };
 
 export type Microcategory = {
@@ -262,4 +263,25 @@ export type Repayment = {
   date: string;
   notes?: string;
   createdAt: string;
+};
+
+// Insurance System Types
+export type InsuranceType = 'Motor' | 'Health' | 'Term' | 'Life' | 'Home' | 'Travel' | 'Other';
+
+export type InsuranceStatus = 'Active' | 'Expiring Soon' | 'Expired';
+
+export type Insurance = {
+  id: string;
+  tenantId: string;
+  userId: string;
+  type: InsuranceType;
+  provider: string;
+  policyNumber: string;
+  premiumAmount: number;
+  startDate: string;
+  expiryDate: string;
+  documentBase64?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 };

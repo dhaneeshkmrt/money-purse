@@ -6,7 +6,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, ReceiptText, Shapes, Shield, Building2, Settings, Landmark, Loader2, DatabaseBackup, Database, Wallet, Wand2, Calculator, BellRing, ScrollText, HandCoins } from 'lucide-react';
+import { LayoutDashboard, ReceiptText, Shapes, Shield, Building2, Settings, Landmark, Loader2, DatabaseBackup, Database, Wallet, Wand2, Calculator, BellRing, ScrollText, HandCoins, ShieldCheck } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
@@ -17,7 +17,7 @@ type NavItemWithHref = {
   href: string;
   label: string;
   icon: React.ComponentType;
-  featureFlag?: 'balanceSheet' | 'virtualAccounts' | 'yearlyReport' | 'aiImageStudio' | 'calculators' | 'admin' | 'reminders' | 'logs' | 'borrowings'
+  featureFlag?: 'balanceSheet' | 'virtualAccounts' | 'yearlyReport' | 'aiImageStudio' | 'calculators' | 'admin' | 'reminders' | 'logs' | 'borrowings' | 'insurance'
 };
 
 type NavItemWithSubItems = {
@@ -51,6 +51,7 @@ const allNavItems: NavItem[] = [
           { href: '/borrowings/contacts', label: 'Contacts', icon: Building2 },
       ]
   },
+  { href: '/insurance', label: 'Insurance', icon: ShieldCheck, featureFlag: 'insurance' },
   { href: '/accounts', label: 'Balance Sheet', icon: Landmark, featureFlag: 'balanceSheet' },
   { href: '/virtual-accounts', label: 'Virtual Accounts', icon: Wallet, featureFlag: 'virtualAccounts' },
   { href: '/yearly-report', label: 'Yearly Report', icon: Database, featureFlag: 'yearlyReport' },
