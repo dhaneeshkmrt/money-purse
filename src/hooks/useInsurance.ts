@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Insurance, User, InsuranceStatus } from '@/lib/types';
-import { differenceInDays, parseISO, startOfDay, isBefore, isAfter } from 'date-fns';
+import { differenceInDays, parseISO, startOfDay, isBefore } from 'date-fns';
 import { logChange } from '@/lib/logger';
 
 export function useInsurance(tenantId: string | null, user: User | null) {

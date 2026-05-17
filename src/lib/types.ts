@@ -280,7 +280,6 @@ export type Insurance = {
   premiumAmount: number;
   startDate: string;
   expiryDate: string;
-  documentBase64?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;

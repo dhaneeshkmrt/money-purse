@@ -4,13 +4,13 @@ import { useApp } from '@/lib/provider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { PlusCircle, ShieldCheck, Calendar, Car, HeartPulse, LifeBuoy, MoreVertical, Trash2, Edit, FileText, AlertTriangle, AlertCircle, Loader2 } from 'lucide-react';
+import { PlusCircle, ShieldCheck, Car, HeartPulse, LifeBuoy, MoreVertical, Trash2, Edit, AlertTriangle, AlertCircle, Loader2 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useCurrencyFormatter } from '@/hooks/useCurrencyFormatter';
 import { format, parseISO } from 'date-fns';
 import { InsuranceDialog } from '@/components/insurance/insurance-dialog';
 import { cn } from '@/lib/utils';
-import type { Insurance, InsuranceType, InsuranceStatus } from '@/lib/types';
+import type { Insurance, InsuranceType } from '@/lib/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,7 +18,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import Image from 'next/image';
 
 export default function InsurancePage() {
   const { insurances, getInsuranceStatus, deleteInsurance, loadingInsurance } = useApp();
@@ -41,9 +40,9 @@ export default function InsurancePage() {
   const getStatusInfo = (expiryDate: string) => {
     const status = getInsuranceStatus(expiryDate);
     switch (status) {
-      case 'Expired': return { label: 'Expired', color: 'bg-destructive/10 text-destructive border-destructive/20', icon: AlertTriangle };
-      case 'Expiring Soon': return { label: 'Expiring Soon', color: 'bg-orange-500/10 text-orange-500 border-orange-500/20', icon: Clock };
-      default: return { label: 'Active', color: 'bg-green-500/10 text-green-500 border-green-500/20', icon: ShieldCheck };
+      case 'Expired': return { label: 'Expired', color: 'bg-destructive/10 text-destructive border-destructive/20' };
+      case 'Expiring Soon': return { label: 'Expiring Soon', color: 'bg-orange-500/10 text-orange-500 border-orange-500/20' };
+      default: return { label: 'Active', color: 'bg-green-500/10 text-green-500 border-green-500/20' };
     }
   };
 
@@ -204,22 +203,11 @@ export default function InsurancePage() {
                   </div>
                 </div>
 
-                {policy.documentBase64 && (
-                    <div className="relative h-32 w-full rounded-md border overflow-hidden group cursor-pointer" onClick={() => {
-                        const win = window.open();
-                        win?.document.write(`<iframe src="${policy.documentBase64}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-                    }}>
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                            <Button variant="secondary" size="sm"><FileText className="mr-2 h-4 w-4" /> View Document</Button>
-                        </div>
-                        {policy.documentBase64.startsWith('data:image') ? (
-                            <Image src={policy.documentBase64} alt="Policy Preview" fill className="object-cover grayscale group-hover:grayscale-0 transition-all" />
-                        ) : (
-                            <div className="h-full w-full bg-muted flex items-center justify-center">
-                                <FileText className="h-8 w-8 text-muted-foreground" />
-                            </div>
-                        )}
-                    </div>
+                {policy.notes && (
+                  <div className="mt-2 pt-2 border-t">
+                    <div className="text-[10px] uppercase font-bold text-muted-foreground">Notes</div>
+                    <p className="text-xs text-muted-foreground italic line-clamp-2">{policy.notes}</p>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -239,25 +227,5 @@ export default function InsurancePage() {
 
       <InsuranceDialog open={dialogOpen} setOpen={setDialogOpen} insurance={selectedInsurance} />
     </div>
-  );
-}
-
-function Clock(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
   );
 }

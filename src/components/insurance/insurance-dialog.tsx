@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -16,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { format, addYears } from 'date-fns';
-import { Loader2, Sparkles, UploadCloud, FileText, X } from 'lucide-react';
+import { Loader2, UploadCloud, FileText, X } from 'lucide-react';
 import { extractInsuranceDetails } from '@/ai/flows/extract-insurance-details';
 import type { Insurance, InsuranceType } from '@/lib/types';
 import Image from 'next/image';
@@ -46,7 +45,7 @@ export function InsuranceDialog({
   const [docBase64, setDocBase64] = useState<string | null>(null);
   
   const [isScanning, setIsScanning] = useState(false);
-  const [isSaving, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isEditing = !!insurance;
 
@@ -60,7 +59,7 @@ export function InsuranceDialog({
         setStartDate(insurance.startDate);
         setExpiryDate(insurance.expiryDate);
         setNotes(insurance.notes || '');
-        setDocBase64(insurance.documentBase64 || null);
+        setDocBase64(null); // Document not stored in DB
       } else {
         reset();
       }
@@ -81,7 +80,6 @@ export function InsuranceDialog({
   };
 
   const handleScan = async (base64: string) => {
-      console.log('Starting AI Scan...');
       setIsScanning(true);
       try {
           const result = await extractInsuranceDetails({ documentDataUri: base64 });
@@ -116,8 +114,7 @@ export function InsuranceDialog({
           premiumAmount: Number(premiumAmount),
           startDate,
           expiryDate,
-          notes,
-          documentBase64: docBase64 || undefined
+          notes
       };
 
       if (isEditing && insurance) {
@@ -150,12 +147,11 @@ export function InsuranceDialog({
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Policy' : 'Add New Insurance'}</DialogTitle>
           <DialogDescription>
-            Record your coverage details. Upload the policy document to automatically scan details using AI.
+            Record your coverage details. Upload the policy document to automatically scan details using AI. Note: Documents are not stored after scanning.
           </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4 py-4">
-          {/* Document Upload Area */}
           <div 
             className="border-2 border-dashed rounded-lg p-4 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-muted/50 transition-colors relative group"
             onClick={() => !isScanning && fileInputRef.current?.click()}
@@ -176,7 +172,7 @@ export function InsuranceDialog({
                     ) : (
                         <FileText className="h-12 w-12 text-primary" />
                     )}
-                    <p className="text-xs text-muted-foreground">Document uploaded. Click to change.</p>
+                    <p className="text-xs text-muted-foreground">Document preview (not saved). Click to change.</p>
                     <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => {
                         e.stopPropagation();
                         setDocBase64(null);
@@ -243,9 +239,9 @@ export function InsuranceDialog({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={isSaving || isScanning}>Cancel</Button>
-          <Button onClick={handleSave} disabled={!provider || !policyNumber || isSaving || isScanning}>
-            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={isSubmitting || isScanning}>Cancel</Button>
+          <Button onClick={handleSave} disabled={!provider || !policyNumber || isSubmitting || isScanning}>
+            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isEditing ? 'Update Policy' : 'Save Policy'}
           </Button>
         </DialogFooter>
