@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview An AI agent that extracts insurance policy details from documents.
@@ -30,22 +31,13 @@ const ExtractInsuranceOutputSchema = z.object({
 });
 export type ExtractInsuranceOutput = z.infer<typeof ExtractInsuranceOutputSchema>;
 
-export async function extractInsuranceDetails(input: ExtractInsuranceInput): Promise<ExtractInsuranceOutput> {
-  try {
-    return await extractInsuranceFlow(input);
-  } catch (error: any) {
-    console.error('AI extraction failed:', error);
-    throw new Error(error.message || 'Failed to extract insurance details. Please check your API key or document quality.');
-  }
-}
-
 const prompt = ai.definePrompt({
   name: 'extractInsurancePrompt',
   input: {schema: ExtractInsuranceInputSchema},
   output: {schema: ExtractInsuranceOutputSchema},
   prompt: `You are an insurance document expert. 
 
-Examine the provided insurance policy document image carefully. 
+Examine the provided insurance policy document image or PDF carefully. 
 Identify the type of insurance (Motor, Health, Term, etc.), the provider name, policy number, premium amount, start date, and expiry date.
 
 If you see multiple dates, look for 'Expiry', 'Ends On', or 'Valid Upto' for the expiryDate.
@@ -65,3 +57,12 @@ const extractInsuranceFlow = ai.defineFlow(
     return output!;
   }
 );
+
+export async function extractInsuranceDetails(input: ExtractInsuranceInput): Promise<ExtractInsuranceOutput> {
+  try {
+    return await extractInsuranceFlow(input);
+  } catch (error: any) {
+    console.error('AI extraction failed:', error);
+    throw new Error(error.message || 'Failed to extract insurance details. Please check your API key or document quality.');
+  }
+}

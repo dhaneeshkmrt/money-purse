@@ -26,6 +26,9 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  serverActions: {
+    bodySizeLimit: '10mb',
+  },
 };
 
 const isTurbopack = !!process.env.TURBOPACK;

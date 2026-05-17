@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -80,6 +81,7 @@ export function InsuranceDialog({
   };
 
   const handleScan = async (base64: string) => {
+      console.log('Starting AI Scan...');
       setIsScanning(true);
       try {
           const result = await extractInsuranceDetails({ documentDataUri: base64 });
@@ -95,6 +97,7 @@ export function InsuranceDialog({
               toast({ title: 'Scan Successful', description: 'AI has extracted the policy details.' });
           }
       } catch (err: any) {
+          console.error('Scan Error:', err);
           toast({ title: 'Scan Failed', description: err.message || 'Could not read document.', variant: 'destructive' });
       } finally {
           setIsScanning(false);
@@ -138,6 +141,7 @@ export function InsuranceDialog({
     setStartDate(format(new Date(), 'yyyy-MM-dd'));
     setExpiryDate(format(addYears(new Date(), 1), 'yyyy-MM-dd'));
     setNotes(''); setDocBase64(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
@@ -176,6 +180,7 @@ export function InsuranceDialog({
                     <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => {
                         e.stopPropagation();
                         setDocBase64(null);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
                     }}>
                         <X className="h-4 w-4" />
                     </Button>

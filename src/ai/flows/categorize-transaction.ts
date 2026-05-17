@@ -1,5 +1,4 @@
 
-// This is a server-side file!
 'use server';
 
 /**
@@ -40,17 +39,6 @@ export type SuggestTransactionCategoriesOutput = z.infer<
   typeof SuggestTransactionCategoriesOutputSchema
 >;
 
-export async function suggestTransactionCategories(
-  input: SuggestTransactionCategoriesInput
-): Promise<SuggestTransactionCategoriesOutput> {
-  try {
-    return await suggestTransactionCategoriesFlow(input);
-  } catch (error) {
-    console.error('AI categorization failed (check your API key):', error);
-    return { suggestedCategory: '', suggestedSubcategory: '' };
-  }
-}
-
 const prompt = ai.definePrompt({
   name: 'suggestTransactionCategoriesPrompt',
   input: {
@@ -59,14 +47,19 @@ const prompt = ai.definePrompt({
   output: {
     schema: SuggestTransactionCategoriesOutputSchema,
   },
-  prompt: `Given the following transaction description, suggest a category and subcategory from the available options.
+  prompt: `You are an AI financial assistant. Given the following transaction description, suggest the most appropriate category and subcategory from the provided lists.
 
 Transaction Description: {{{transactionDescription}}}
-Available Categories: {{#each availableCategories}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}
-Available Subcategories: {{#each availableSubcategories}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}
 
-Category: {{suggestedCategory}}
-Subcategory: {{suggestedSubcategory}}`,
+Available Categories: 
+{{#each availableCategories}}- {{{this}}}
+{{/each}}
+
+Available Subcategories:
+{{#each availableSubcategories}}- {{{this}}}
+{{/each}}
+
+Return the best matching pair from the lists.`,
 });
 
 const suggestTransactionCategoriesFlow = ai.defineFlow(
@@ -80,8 +73,18 @@ const suggestTransactionCategoriesFlow = ai.defineFlow(
       const {output} = await prompt(input);
       return output!;
     } catch (error) {
-      // Re-throw so the wrapper function can catch it and return a safe default
       throw error;
     }
   }
 );
+
+export async function suggestTransactionCategories(
+  input: SuggestTransactionCategoriesInput
+): Promise<SuggestTransactionCategoriesOutput> {
+  try {
+    return await suggestTransactionCategoriesFlow(input);
+  } catch (error) {
+    console.error('AI categorization failed (check your API key):', error);
+    return { suggestedCategory: '', suggestedSubcategory: '' };
+  }
+}
