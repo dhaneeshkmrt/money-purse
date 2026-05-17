@@ -21,8 +21,9 @@ const ProcessVoiceTransactionOutputSchema = z.object({
   amount: z.number().describe('The numeric amount of the transaction.'),
   category: z.string().describe('The best matching category from the provided list.'),
   subcategory: z.string().describe('A logical subcategory for the expense.'),
+  microcategory: z.string().optional().describe('A specific micro-subcategory if mentioned or implied.'),
   date: z.string().describe('The date mentioned, or current date if not specified (YYYY-MM-DD).'),
-  notes: z.string().optional().describe('Any extra context from the voice note.'),
+  notes: z.string().optional().describe('Any extra context, details, or specific mentions from the voice note.'),
 });
 export type ProcessVoiceTransactionOutput = z.infer<typeof ProcessVoiceTransactionOutputSchema>;
 
@@ -30,12 +31,18 @@ const prompt = ai.definePrompt({
   name: 'processVoiceTransactionPrompt',
   input: { schema: ProcessVoiceTransactionInputSchema },
   output: { schema: ProcessVoiceTransactionOutputSchema },
-  prompt: `You are a financial assistant. Listen to this voice note and extract transaction details.
+  prompt: `You are a highly skilled financial assistant. Your task is to listen to the provided voice note and extract structured transaction details.
   
-  Map the expense to one of these categories if possible: {{#each availableCategories}}{{{this}}}, {{/each}}.
-  
-  If the user says something like "Spent 50 on coffee yesterday", set the date to yesterday's date relative to now.
-  If no date is mentioned, use today's date: ${new Date().toISOString().split('T')[0]}.
+  Fields to extract:
+  1. **description**: A concise summary of what was purchased.
+  2. **amount**: The numeric value.
+  3. **category**: Choose the BEST match from this list: {{#each availableCategories}}{{{this}}}, {{/each}}.
+  4. **subcategory**: Identify a specific sub-type (e.g., "Grocery", "Petrol", "Hospital Bill").
+  5. **microcategory**: If mentioned (e.g., "Shampoo", "Apples", "Tablets"), capture it here.
+  6. **date**: The date of the transaction. If the user says "yesterday" or "last Friday", calculate it relative to today: ${new Date().toISOString().split('T')[0]}. If no date is mentioned, use today.
+  7. **notes**: Any additional context like "emergency", "for mom", "birthday gift", or payment method mentions.
+
+  Be precise with the amount. If multiple items are mentioned, summarize them in the description and sum the amounts.
 
   Audio: {{media url=audioDataUri}}`,
 });
@@ -47,8 +54,13 @@ const processVoiceTransactionFlow = ai.defineFlow(
     outputSchema: ProcessVoiceTransactionOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
-    return output!;
+    try {
+      const {output} = await prompt(input);
+      return output!;
+    } catch (error: any) {
+      console.error('Flow execution error:', error);
+      throw error;
+    }
   }
 );
 

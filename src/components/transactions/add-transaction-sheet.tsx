@@ -261,6 +261,7 @@ export default function AddTransactionSheet({
       });
 
       if (result) {
+        // Pre-fill all extracted fields
         form.setValue('description', result.description, { shouldDirty: true, shouldValidate: true });
         form.setValue('amount', result.amount, { shouldDirty: true, shouldValidate: true });
         setValue(String(result.amount));
@@ -271,6 +272,9 @@ export default function AddTransactionSheet({
         if (result.subcategory) {
           form.setValue('subcategory', result.subcategory, { shouldDirty: true, shouldValidate: true });
         }
+        if (result.microcategory) {
+          form.setValue('microcategory', result.microcategory, { shouldDirty: true, shouldValidate: true });
+        }
         if (result.date) {
           form.setValue('date', parseISO(result.date), { shouldDirty: true, shouldValidate: true });
         }
@@ -278,7 +282,7 @@ export default function AddTransactionSheet({
           form.setValue('notes', result.notes, { shouldDirty: true, shouldValidate: true });
         }
 
-        toast({ title: "Voice Processed", description: "Form pre-filled. Please review details." });
+        toast({ title: "Voice Processed", description: "Form pre-filled with extracted details." });
       }
     } catch (err: any) {
       toast({ title: "AI Error", description: err.message, variant: "destructive" });
@@ -482,6 +486,28 @@ export default function AddTransactionSheet({
                     />
                   )}
 
+                  {microcategories.length > 0 && (
+                    <FormField
+                      control={form.control}
+                      name="microcategory"
+                      render={({ field }) => (
+                        <FormItem className="space-y-3">
+                          <FormLabel>Micro-category</FormLabel>
+                          <FormControl>
+                            <RadioGroup onValueChange={field.onChange} value={field.value} className="flex flex-wrap gap-2">
+                              {microcategories.map((micro) => (
+                                <div key={micro.id}>
+                                  <RadioGroupItem value={micro.name} id={`micro-${micro.id}`} className="sr-only peer" />
+                                  <Label htmlFor={`micro-${micro.id}`} className={chipRadioClasses}>{micro.name}</Label>
+                                </div>
+                              ))}
+                            </RadioGroup>
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  )}
+
                   <FormField
                     control={form.control}
                     name="paidBy"
@@ -498,6 +524,20 @@ export default function AddTransactionSheet({
                             ))}
                           </RadioGroup>
                         </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="notes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notes</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Extra details..." {...field} />
+                        </FormControl>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
