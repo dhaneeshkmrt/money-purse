@@ -4,7 +4,7 @@ import { useApp } from '@/lib/provider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { PlusCircle, ShieldCheck, Car, HeartPulse, LifeBuoy, MoreVertical, Trash2, Edit, AlertTriangle, AlertCircle, Loader2 } from 'lucide-react';
+import { PlusCircle, ShieldCheck, Car, HeartPulse, LifeBuoy, MoreVertical, Trash2, Edit, AlertTriangle, AlertCircle, Loader2, BellRing } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useCurrencyFormatter } from '@/hooks/useCurrencyFormatter';
 import { format, parseISO } from 'date-fns';
@@ -198,8 +198,12 @@ export default function InsurancePage() {
                     </div>
                   </div>
                   <div className="mt-2">
-                    <div className="text-[10px] uppercase font-bold text-muted-foreground">Term</div>
-                    <div className="text-xs">{format(parseISO(policy.startDate), 'MMM yy')} - {format(parseISO(policy.expiryDate), 'MMM yy')}</div>
+                    <div className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1">
+                        <BellRing className="h-3 w-3" /> Reminder
+                    </div>
+                    <div className="text-xs font-medium text-primary">
+                        {policy.reminderDate ? format(parseISO(policy.reminderDate), 'dd MMM yyyy') : 'No reminder'}
+                    </div>
                   </div>
                 </div>
 

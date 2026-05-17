@@ -14,8 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { format, addYears } from 'date-fns';
-import { Loader2, UploadCloud, FileText, X } from 'lucide-react';
+import { format, addYears, subDays, parseISO } from 'date-fns';
+import { Loader2, UploadCloud, FileText, X, BellRing } from 'lucide-react';
 import { extractInsuranceDetails } from '@/ai/flows/extract-insurance-details';
 import type { Insurance, InsuranceType } from '@/lib/types';
 import Image from 'next/image';
@@ -41,6 +41,7 @@ export function InsuranceDialog({
   const [premiumAmount, setPremiumAmount] = useState('');
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [expiryDate, setExpiryDate] = useState(format(addYears(new Date(), 1), 'yyyy-MM-dd'));
+  const [reminderDate, setReminderDate] = useState(format(subDays(addYears(new Date(), 1), 30), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
   const [docBase64, setDocBase64] = useState<string | null>(null);
   
@@ -58,8 +59,9 @@ export function InsuranceDialog({
         setPremiumAmount(insurance.premiumAmount.toString());
         setStartDate(insurance.startDate);
         setExpiryDate(insurance.expiryDate);
+        setReminderDate(insurance.reminderDate || format(subDays(parseISO(insurance.expiryDate), 30), 'yyyy-MM-dd'));
         setNotes(insurance.notes || '');
-        setDocBase64(null); // Document not stored in DB
+        setDocBase64(null);
       } else {
         reset();
       }
@@ -90,6 +92,11 @@ export function InsuranceDialog({
               setPremiumAmount(result.premiumAmount.toString());
               setStartDate(result.startDate);
               setExpiryDate(result.expiryDate);
+              
+              // Default reminder to 30 days before expiry
+              const parsedExpiry = parseISO(result.expiryDate);
+              setReminderDate(format(subDays(parsedExpiry, 30), 'yyyy-MM-dd'));
+              
               if (result.notes) setNotes(result.notes);
               
               toast({ title: 'Scan Successful', description: 'AI has extracted the policy details.' });
@@ -114,6 +121,7 @@ export function InsuranceDialog({
           premiumAmount: Number(premiumAmount),
           startDate,
           expiryDate,
+          reminderDate,
           notes
       };
 
@@ -137,6 +145,7 @@ export function InsuranceDialog({
     setType('Motor'); setProvider(''); setPolicyNumber(''); setPremiumAmount('');
     setStartDate(format(new Date(), 'yyyy-MM-dd'));
     setExpiryDate(format(addYears(new Date(), 1), 'yyyy-MM-dd'));
+    setReminderDate(format(subDays(addYears(new Date(), 1), 30), 'yyyy-MM-dd'));
     setNotes(''); setDocBase64(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -147,7 +156,7 @@ export function InsuranceDialog({
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Policy' : 'Add New Insurance'}</DialogTitle>
           <DialogDescription>
-            Record your coverage details. Upload the policy document to automatically scan details using AI. Note: Documents are not stored after scanning.
+            Record your coverage details. Set a reminder date to get notified on your dashboard for renewal.
           </DialogDescription>
         </DialogHeader>
         
@@ -230,6 +239,20 @@ export function InsuranceDialog({
               <label className="text-sm font-medium">Expiry Date</label>
               <Input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
             </div>
+          </div>
+
+          <div className="space-y-2 p-3 border rounded-md bg-muted/20 border-primary/20">
+            <label className="text-sm font-semibold flex items-center gap-2 text-primary">
+                <BellRing className="h-4 w-4" />
+                Renewal Reminder Date
+            </label>
+            <Input 
+                type="date" 
+                value={reminderDate} 
+                onChange={e => setReminderDate(e.target.value)} 
+                className="bg-background"
+            />
+            <p className="text-[10px] text-muted-foreground">Alert will appear on your dashboard on this date.</p>
           </div>
 
           <div className="space-y-2">

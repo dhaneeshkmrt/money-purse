@@ -280,6 +280,7 @@ export type Insurance = {
   premiumAmount: number;
   startDate: string;
   expiryDate: string;
+  reminderDate: string; // Date when user wants to be notified for renewal
   notes?: string;
   createdAt: string;
   updatedAt: string;
