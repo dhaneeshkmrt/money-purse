@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview An AI image generation and editing agent.
@@ -29,16 +28,6 @@ const GenerateImageOutputSchema = z.object({
 });
 export type GenerateImageOutput = z.infer<typeof GenerateImageOutputSchema>;
 
-export async function generateImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
-  try {
-    return await generateImageFlow(input);
-  } catch (error: any) {
-    console.error('AI image generation failed:', error);
-    // Propagate the specific error message (like 403 Forbidden) so the UI Toast can display it
-    throw new Error(error.message || 'Image generation failed. Please check your API key.');
-  }
-}
-
 const generateImageFlow = ai.defineFlow(
   {
     name: 'generateImageFlow',
@@ -46,7 +35,8 @@ const generateImageFlow = ai.defineFlow(
     outputSchema: GenerateImageOutputSchema,
   },
   async ({ prompt, imageDataUri }) => {
-    const model = 'googleai/gemini-2.5-flash-image-preview';
+    // Using the latest supported image generation model
+    const model = 'googleai/gemini-2.5-flash-image';
 
     const promptParts: any[] = [{ text: prompt }];
 
@@ -70,3 +60,13 @@ const generateImageFlow = ai.defineFlow(
     return { generatedImageUri: media.url };
   }
 );
+
+export async function generateImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
+  try {
+    return await generateImageFlow(input);
+  } catch (error: any) {
+    console.error('AI image generation failed:', error);
+    // Propagate the specific error message so the UI Toast can display it
+    throw new Error(error.message || 'Image generation failed. Please check your API key.');
+  }
+}
