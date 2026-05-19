@@ -1,6 +1,7 @@
 'use server';
 /**
  * @fileOverview AI flow to process voice notes and extract transaction details.
+ * Supports English, Tamil, and Tanglish (mixed) speech.
  */
 
 import {ai} from '@/ai/genkit';
@@ -10,14 +11,14 @@ const ProcessVoiceTransactionInputSchema = z.object({
   audioDataUri: z
     .string()
     .describe(
-      "A recording of a transaction detail, as a data URI. Format: 'data:audio/webm;base64,<encoded_data>'."
+      "A recording of a transaction detail, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:audio/webm;base64,<encoded_data>'."
     ),
   availableCategories: z.array(z.string()).describe('List of current user categories.'),
 });
 export type ProcessVoiceTransactionInput = z.infer<typeof ProcessVoiceTransactionInputSchema>;
 
 const ProcessVoiceTransactionOutputSchema = z.object({
-  description: z.string().describe('Short summary of the expense.'),
+  description: z.string().describe('Short summary of the expense in English.'),
   amount: z.number().describe('The numeric amount of the transaction.'),
   category: z.string().describe('The best matching category from the provided list.'),
   subcategory: z.string().describe('A logical subcategory for the expense.'),
@@ -39,16 +40,21 @@ const prompt = ai.definePrompt({
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
     ],
   },
-  prompt: `You are a highly skilled financial assistant. Your task is to listen to the provided voice note and extract structured transaction details.
+  prompt: `You are a highly skilled multi-lingual financial assistant. Your task is to listen to the provided voice note and extract structured transaction details.
+  
+  IMPORTANT LANGUAGE SUPPORT:
+  - The voice note may be in English, Tamil (தமிழ்), or a mix of both (Tanglish).
+  - Even if the input is in Tamil, provide the final 'description' in English for consistency.
+  - Correctly identify Tamil numbers (e.g., "ஆயிரத்து ஐந்நூறு" is 1500) and dates (e.g., "நேற்று" is yesterday).
   
   Fields to extract:
-  1. **description**: A concise summary of what was purchased.
+  1. **description**: A concise summary of what was purchased (translated to English).
   2. **amount**: The numeric value.
   3. **category**: Choose the BEST match from this list: {{#each availableCategories}}{{{this}}}, {{/each}}.
   4. **subcategory**: Identify a specific sub-type (e.g., "Grocery", "Petrol", "Hospital Bill").
   5. **microcategory**: If mentioned (e.g., "Shampoo", "Apples", "Tablets"), capture it here.
-  6. **date**: The date of the transaction. If the user says "yesterday" or "last Friday", calculate it relative to today: ${new Date().toISOString().split('T')[0]}. If no date is mentioned, use today.
-  7. **notes**: Any additional context like "emergency", "for mom", "birthday gift", or payment method mentions.
+  6. **date**: The date of the transaction. If the user mentions "yesterday" (நேற்று) or a specific weekday, calculate it relative to today: ${new Date().toISOString().split('T')[0]}. If no date is mentioned, use today.
+  7. **notes**: Any extra context like "emergency", "for mom", "birthday gift", or payment method mentions.
 
   Be precise with the amount. If multiple items are mentioned, summarize them in the description and sum the amounts.
 
@@ -73,7 +79,7 @@ export async function processVoiceTransaction(input: ProcessVoiceTransactionInpu
     return await processVoiceTransactionFlow(input);
   } catch (error: any) {
     console.error('Voice processing failed:', error);
-    // Return a default object with an error message in notes to avoid crashing the server action render
-    throw new Error(error.message || 'Failed to process voice note. Check your API key or audio quality.');
+    // Re-throw with a clean message for the UI
+    throw new Error(error.message || 'Failed to process voice note. Please try again with clearer audio.');
   }
 }
