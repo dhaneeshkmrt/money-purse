@@ -2,6 +2,7 @@
 /**
  * @fileOverview AI flow to process voice notes and extract transaction details.
  * Supports English, Tamil, and Tanglish (mixed) speech.
+ * All fields are optional to handle partial dictation.
  */
 
 import {ai} from '@/ai/genkit';
@@ -19,12 +20,12 @@ const ProcessVoiceTransactionInputSchema = z.object({
 export type ProcessVoiceTransactionInput = z.infer<typeof ProcessVoiceTransactionInputSchema>;
 
 const ProcessVoiceTransactionOutputSchema = z.object({
-  description: z.string().describe('Short summary of the expense in English.'),
-  amount: z.number().describe('The numeric amount of the transaction.'),
-  category: z.string().describe('The best matching category from the provided list.'),
-  subcategory: z.string().describe('A logical subcategory for the expense.'),
+  description: z.string().optional().describe('Short summary of the expense in English.'),
+  amount: z.number().optional().describe('The numeric amount of the transaction.'),
+  category: z.string().optional().describe('The best matching category from the provided list.'),
+  subcategory: z.string().optional().describe('A logical subcategory for the expense.'),
   microcategory: z.string().optional().describe('A specific micro-subcategory if mentioned or implied.'),
-  date: z.string().describe('The date mentioned, or current date if not specified (YYYY-MM-DD).'),
+  date: z.string().optional().describe('The date mentioned, in YYYY-MM-DD format.'),
   notes: z.string().optional().describe('Any extra context, details, or specific mentions from the voice note.'),
 });
 export type ProcessVoiceTransactionOutput = z.infer<typeof ProcessVoiceTransactionOutputSchema>;
@@ -48,16 +49,16 @@ const prompt = ai.definePrompt({
   - Even if the input is in Tamil, provide the final 'description' in English for consistency.
   - Correctly identify Tamil numbers (e.g., "ஆயிரத்து ஐந்நூறு" is 1500) and dates (e.g., "நேற்று" is yesterday).
   
-  Fields to extract:
+  Fields to extract (ALL ARE OPTIONAL, only provide what you hear):
   1. **description**: A concise summary of what was purchased (translated to English).
   2. **amount**: The numeric value.
   3. **category**: Choose the BEST match from this list: {{#each availableCategories}}{{{this}}}, {{/each}}.
   4. **subcategory**: Identify a specific sub-type (e.g., "Grocery", "Petrol", "Hospital Bill").
   5. **microcategory**: If mentioned (e.g., "Shampoo", "Apples", "Tablets"), capture it here.
-  6. **date**: The date of the transaction. If the user mentions "yesterday" (நேற்று) or a specific weekday, calculate it relative to today: ${new Date().toISOString().split('T')[0]}. If no date is mentioned, use today.
+  6. **date**: The date of the transaction. If the user mentions "yesterday" (நேற்று) or a specific weekday, calculate it relative to today: ${new Date().toISOString().split('T')[0]}.
   7. **notes**: Any extra context like "emergency", "for mom", "birthday gift", or payment method mentions.
 
-  Be precise with the amount. If multiple items are mentioned, summarize them in the description and sum the amounts.
+  Be precise with the amount. If multiple items are mentioned, summarize them in the description and sum the amounts. If a field is not mentioned, do not invent data for it.
 
   Audio: {{media url=audioDataUri}}`,
 });
