@@ -5,6 +5,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import {googleAI} from '@genkit-ai/google-genai';
 
 const ExtractInsuranceInputSchema = z.object({
   documentDataUri: z
@@ -54,6 +55,7 @@ const extractInsuranceFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
+    if (!output) throw new Error('AI failed to read the document details. Please ensure the photo is clear.');
     return output!;
   }
 );

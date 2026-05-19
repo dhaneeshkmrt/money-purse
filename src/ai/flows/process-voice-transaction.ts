@@ -6,6 +6,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import {googleAI} from '@genkit-ai/google-genai';
 
 const ProcessVoiceTransactionInputSchema = z.object({
   audioDataUri: z
@@ -69,7 +70,7 @@ const processVoiceTransactionFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
-    if (!output) throw new Error('AI failed to generate a response');
+    if (!output) throw new Error('AI failed to generate a structured response. Please try with clearer audio.');
     return output;
   }
 );
@@ -79,7 +80,7 @@ export async function processVoiceTransaction(input: ProcessVoiceTransactionInpu
     return await processVoiceTransactionFlow(input);
   } catch (error: any) {
     console.error('Voice processing failed:', error);
-    // Re-throw with a clean message for the UI
-    throw new Error(error.message || 'Failed to process voice note. Please try again with clearer audio.');
+    // Propagate a clean error message for the UI Toast
+    throw new Error(error.message || 'Failed to process voice note. Ensure microphone quality is good.');
   }
 }

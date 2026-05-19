@@ -29,17 +29,12 @@ import { cn } from '@/lib/utils';
 import { format, parseISO, getYear, getMonth, subDays, addDays } from 'date-fns';
 import { useApp } from '@/lib/provider';
 import { useToast } from '@/hooks/use-toast';
-import { useDebounce } from '@/hooks/use-debounce';
-import { suggestTransactionCategories } from '@/ai/flows/categorize-transaction';
 import { processVoiceTransaction } from '@/ai/flows/process-voice-transaction';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { Transaction } from '@/lib/types';
 import { useCurrencyInput } from '@/hooks/useCurrencyInput';
-import { SubcategoryDialog } from '../categories/subcategory-dialog';
-import { MicrocategoryDialog } from '../categories/microcategory-dialog';
-import DayTransactionsDialog from '../dashboard/day-transactions-dialog';
 
 const transactionSchema = z.object({
   date: z.date({
@@ -71,21 +66,15 @@ export default function AddTransactionSheet({
   transaction,
 }: AddTransactionSheetProps) {
   const [internalOpen, setInternalOpen] = useState(false);
-  const { categories, addTransaction, editTransaction, tenants, selectedTenantId, isMonthLocked, settings, addSubcategory, addMicrocategory, transactions, filteredTransactions } = useApp();
+  const { categories, addTransaction, editTransaction, tenants, selectedTenantId, isMonthLocked, settings, filteredTransactions } = useApp();
   const { toast } = useToast();
-  const [isAiPending, startAiTransition] = useTransition();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [duplicateAmount, setDuplicateAmount] = useState<Transaction[]>([]);
 
   // Voice Recording State
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-
-  const [subcategoryDialogOpen, setSubcategoryDialogOpen] = useState(false);
-  const [microcategoryDialogOpen, setMicrocategoryDialogOpen] = useState(false);
-  const [dayTransactionsDialogOpen, setDayTransactionsDialogOpen] = useState(false);
 
   const isEditing = !!transaction;
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
@@ -196,7 +185,6 @@ export default function AddTransactionSheet({
         setValue('');
         inputRef.current?.focus();
       }
-      setDuplicateAmount([]);
     }
   }, [open, isEditing, transaction, paidByOptions, form, setValue, inputRef, settings]);
 
@@ -213,7 +201,6 @@ export default function AddTransactionSheet({
       return subcategory ? (subcategory.microcategories || []) : [];
   }, [selectedSubcategoryName, subcategories]);
 
-  // Voice Recording Logic
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -261,31 +248,48 @@ export default function AddTransactionSheet({
       });
 
       if (result) {
-        // Pre-fill all extracted fields
-        form.setValue('description', result.description, { shouldDirty: true, shouldValidate: true });
-        form.setValue('amount', result.amount, { shouldDirty: true, shouldValidate: true });
-        setValue(String(result.amount));
+        // Robustly map AI result to form, ignoring invalid or mismatching fields
+        if (result.description) form.setValue('description', result.description, { shouldDirty: true, shouldValidate: true });
+        if (result.amount) {
+            form.setValue('amount', result.amount, { shouldDirty: true, shouldValidate: true });
+            setValue(String(result.amount));
+        }
         
-        if (result.category) {
-          form.setValue('category', result.category, { shouldDirty: true, shouldValidate: true });
+        // Ensure category matches one of our existing ones
+        const validCategory = categories.find(c => c.name === result.category);
+        if (validCategory) {
+            form.setValue('category', validCategory.name, { shouldDirty: true, shouldValidate: true });
+            
+            // Only try subcategories if category is valid
+            const validSub = validCategory.subcategories.find(s => s.name === result.subcategory);
+            if (validSub) {
+                form.setValue('subcategory', validSub.name, { shouldDirty: true, shouldValidate: true });
+                
+                // Only try microcategories if subcategory is valid
+                const validMicro = validSub.microcategories.find(m => m.name === result.microcategory);
+                if (validMicro) {
+                    form.setValue('microcategory', validMicro.name, { shouldDirty: true, shouldValidate: true });
+                }
+            }
         }
-        if (result.subcategory) {
-          form.setValue('subcategory', result.subcategory, { shouldDirty: true, shouldValidate: true });
-        }
-        if (result.microcategory) {
-          form.setValue('microcategory', result.microcategory, { shouldDirty: true, shouldValidate: true });
-        }
+
         if (result.date) {
-          form.setValue('date', parseISO(result.date), { shouldDirty: true, shouldValidate: true });
+          try {
+            form.setValue('date', parseISO(result.date), { shouldDirty: true, shouldValidate: true });
+          } catch(e) { /* ignore invalid dates */ }
         }
-        if (result.notes) {
-          form.setValue('notes', result.notes, { shouldDirty: true, shouldValidate: true });
-        }
+        
+        if (result.notes) form.setValue('notes', result.notes, { shouldDirty: true, shouldValidate: true });
 
         toast({ title: "Voice Processed", description: "Form pre-filled with extracted details." });
       }
     } catch (err: any) {
-      toast({ title: "AI Error", description: err.message, variant: "destructive" });
+      console.error("Voice processing failed:", err);
+      toast({ 
+        title: "AI Analysis Failed", 
+        description: err.message || "Failed to process voice note. Please try with clearer audio.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsProcessingVoice(false);
     }
