@@ -1,12 +1,7 @@
-
 'use server';
 
 /**
  * @fileOverview Provides AI-powered suggestions for transaction categories.
- *
- * - suggestTransactionCategories - A function that suggests categories for transactions.
- * - SuggestTransactionCategoriesInput - The input type for the suggestTransactionCategories function.
- * - SuggestTransactionCategoriesOutput - The return type for the suggestTransactionCategories function.
  */
 
 import {ai} from '@/ai/genkit';
@@ -47,6 +42,11 @@ const prompt = ai.definePrompt({
   output: {
     schema: SuggestTransactionCategoriesOutputSchema,
   },
+  config: {
+    safetySettings: [
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+    ],
+  },
   prompt: `You are an AI financial assistant. Given the following transaction description, suggest the most appropriate category and subcategory from the provided lists.
 
 Transaction Description: {{{transactionDescription}}}
@@ -69,12 +69,8 @@ const suggestTransactionCategoriesFlow = ai.defineFlow(
     outputSchema: SuggestTransactionCategoriesOutputSchema,
   },
   async input => {
-    try {
-      const {output} = await prompt(input);
-      return output!;
-    } catch (error) {
-      throw error;
-    }
+    const {output} = await prompt(input);
+    return output!;
   }
 );
 
@@ -84,7 +80,7 @@ export async function suggestTransactionCategories(
   try {
     return await suggestTransactionCategoriesFlow(input);
   } catch (error) {
-    console.error('AI categorization failed (check your API key):', error);
+    console.error('AI categorization failed:', error);
     return { suggestedCategory: '', suggestedSubcategory: '' };
   }
 }

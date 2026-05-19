@@ -1,11 +1,6 @@
-
 'use server';
 /**
  * @fileOverview An AI agent that extracts insurance policy details from documents.
- *
- * - extractInsuranceDetails - A function that handles the extraction process.
- * - ExtractInsuranceInput - The input type for the extraction function.
- * - ExtractInsuranceOutput - The return type for the extraction function.
  */
 
 import {ai} from '@/ai/genkit';
@@ -35,9 +30,14 @@ const prompt = ai.definePrompt({
   name: 'extractInsurancePrompt',
   input: {schema: ExtractInsuranceInputSchema},
   output: {schema: ExtractInsuranceOutputSchema},
+  config: {
+    safetySettings: [
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+    ],
+  },
   prompt: `You are an insurance document expert. 
 
-Examine the provided insurance policy document image or PDF carefully. 
+Examine the provided insurance policy document image carefully. 
 Identify the type of insurance (Motor, Health, Term, etc.), the provider name, policy number, premium amount, start date, and expiry date.
 
 If you see multiple dates, look for 'Expiry', 'Ends On', or 'Valid Upto' for the expiryDate.
@@ -63,6 +63,6 @@ export async function extractInsuranceDetails(input: ExtractInsuranceInput): Pro
     return await extractInsuranceFlow(input);
   } catch (error: any) {
     console.error('AI extraction failed:', error);
-    throw new Error(error.message || 'Failed to extract insurance details. Please check your API key or document quality.');
+    throw new Error(error.message || 'Failed to extract insurance details. Please check document quality.');
   }
 }

@@ -31,6 +31,14 @@ const prompt = ai.definePrompt({
   name: 'processVoiceTransactionPrompt',
   input: { schema: ProcessVoiceTransactionInputSchema },
   output: { schema: ProcessVoiceTransactionOutputSchema },
+  config: {
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+    ],
+  },
   prompt: `You are a highly skilled financial assistant. Your task is to listen to the provided voice note and extract structured transaction details.
   
   Fields to extract:
@@ -54,13 +62,9 @@ const processVoiceTransactionFlow = ai.defineFlow(
     outputSchema: ProcessVoiceTransactionOutputSchema,
   },
   async input => {
-    try {
-      const {output} = await prompt(input);
-      return output!;
-    } catch (error: any) {
-      console.error('Flow execution error:', error);
-      throw error;
-    }
+    const {output} = await prompt(input);
+    if (!output) throw new Error('AI failed to generate a response');
+    return output;
   }
 );
 
@@ -69,6 +73,7 @@ export async function processVoiceTransaction(input: ProcessVoiceTransactionInpu
     return await processVoiceTransactionFlow(input);
   } catch (error: any) {
     console.error('Voice processing failed:', error);
-    throw new Error(error.message || 'Failed to process voice note. Ensure microphone quality is good.');
+    // Return a default object with an error message in notes to avoid crashing the server action render
+    throw new Error(error.message || 'Failed to process voice note. Check your API key or audio quality.');
   }
 }
