@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useTransition, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -14,6 +15,24 @@ import {
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import {
   Form,
   FormControl,
   FormField,
@@ -23,7 +42,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Loader2, Lock, Plus, PlusCircle, Eye, AlertTriangle, ChevronLeft, ChevronRight, Mic, Square, Volume2 } from 'lucide-react';
+import { CalendarIcon, Loader2, Lock, Plus, PlusCircle, Eye, AlertTriangle, ChevronLeft, ChevronRight, Mic, Square, Volume2, Trash2 } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format, parseISO, getYear, getMonth, subDays, addDays } from 'date-fns';
@@ -35,6 +54,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { Transaction } from '@/lib/types';
 import { useCurrencyInput } from '@/hooks/useCurrencyInput';
+import { useCurrencyFormatter } from '@/hooks/useCurrencyFormatter';
 
 const transactionSchema = z.object({
   date: z.date({
@@ -66,9 +86,12 @@ export default function AddTransactionSheet({
   transaction,
 }: AddTransactionSheetProps) {
   const [internalOpen, setInternalOpen] = useState(false);
-  const { categories, addTransaction, editTransaction, tenants, selectedTenantId, isMonthLocked, settings, filteredTransactions } = useApp();
+  const { categories, addTransaction, editTransaction, deleteTransaction, tenants, selectedTenantId, isMonthLocked, settings, filteredTransactions } = useApp();
   const { toast } = useToast();
+  const formatCurrency = useCurrencyFormatter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [dateTransactionsOpen, setDateTransactionsOpen] = useState(false);
+  const [transactionToDelete, setTransactionToDelete] = useState<{id: string; description: string; amount: number} | null>(null);
 
   // Voice Recording State
   const [isRecording, setIsRecording] = useState(false);
@@ -151,6 +174,13 @@ export default function AddTransactionSheet({
   }, [lastExpression, form]);
 
   const selectedDate = form.watch('date');
+  const watchedAmount = form.watch('amount');
+
+  const duplicateMatches = useMemo(() => {
+    if (!watchedAmount || watchedAmount <= 0 || isEditing) return [];
+    return filteredTransactions.filter(t => t.amount === watchedAmount);
+  }, [watchedAmount, filteredTransactions, isEditing]);
+
   const isSelectedMonthLocked = useMemo(() => {
     if (!selectedDate) return false;
     const year = getYear(selectedDate);
@@ -391,6 +421,28 @@ export default function AddTransactionSheet({
                         </FormControl>
                         {calculationResult && <div className="text-xs text-muted-foreground pt-1">= {calculationResult}</div>}
                         {amountInWords && <div className="text-xs text-muted-foreground pt-1 font-medium italic">{amountInWords}</div>}
+                        {duplicateMatches.length > 0 && (
+                          <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                              {duplicateMatches.length} existing transaction{duplicateMatches.length !== 1 ? 's' : ''} with same amount
+                            </div>
+                            <div className="space-y-1">
+                              {duplicateMatches.slice(0, 5).map(t => (
+                                <div key={t.id} className="flex items-center justify-between text-xs">
+                                  <span className="text-muted-foreground truncate mr-2">
+                                    <span className="font-medium text-foreground">{t.description}</span>
+                                    {' · '}{t.category}{t.subcategory ? ` › ${t.subcategory}` : ''}{t.microcategory ? ` › ${t.microcategory}` : ''}
+                                  </span>
+                                  <span className="text-muted-foreground shrink-0">{t.date}</span>
+                                </div>
+                              ))}
+                              {duplicateMatches.length > 5 && (
+                                <div className="text-xs text-muted-foreground">...and {duplicateMatches.length - 5} more</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -441,6 +493,10 @@ export default function AddTransactionSheet({
                                 const d = form.getValues('date');
                                 if(d) form.setValue('date', addDays(d, 1));
                             }}><ChevronRight className="h-4 w-4" /></Button>
+
+                            <Button type="button" variant="ghost" size="icon" onClick={() => setDateTransactionsOpen(true)} title="View transactions for this date">
+                              <Eye className="h-4 w-4" />
+                            </Button>
                           </div>
                           <FormMessage />
                         </FormItem>
@@ -561,6 +617,87 @@ export default function AddTransactionSheet({
           </Form>
         </SheetContent>
       </Sheet>
+
+      <Dialog open={dateTransactionsOpen} onOpenChange={setDateTransactionsOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Transactions on {selectedDate ? format(selectedDate, 'PPP') : ''}</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="h-[350px] pr-4">
+            <div className="space-y-3 py-2">
+              {(() => {
+                const dateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : '';
+                const dayTransactions = filteredTransactions.filter(t => t.date === dateStr);
+                const totalForDay = dayTransactions.reduce((sum, t) => sum + t.amount, 0);
+                if (dayTransactions.length === 0) {
+                  return <p className="text-center text-muted-foreground pt-10">No transactions on this date.</p>;
+                }
+                return (
+                  <>
+                    <div className="flex justify-between text-sm text-muted-foreground pb-2 border-b">
+                      <span>{dayTransactions.length} transaction{dayTransactions.length !== 1 ? 's' : ''}</span>
+                      <span className="font-semibold text-foreground">{formatCurrency(totalForDay)}</span>
+                    </div>
+                    {dayTransactions.map((transaction) => (
+                      <div key={transaction.id} className="flex items-center gap-3 py-1.5">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium leading-none truncate">{transaction.description}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{transaction.category} &bull; {transaction.subcategory}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-right">
+                            <span className="text-sm font-medium">{formatCurrency(transaction.amount)}</span>
+                            <Badge variant="outline" className="ml-2 font-mono text-xs">{transaction.paidBy.toUpperCase()}</Badge>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => setTransactionToDelete({ id: transaction.id, description: transaction.description, amount: transaction.amount })}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                );
+              })()}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!transactionToDelete} onOpenChange={(open) => { if (!open) setTransactionToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Transaction?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>&ldquo;{transactionToDelete?.description}&rdquo;</strong> ({transactionToDelete ? formatCurrency(transactionToDelete.amount) : ''})? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!transactionToDelete) return;
+                try {
+                  await deleteTransaction(transactionToDelete.id);
+                  toast({ title: 'Transaction Deleted', description: `"${transactionToDelete.description}" has been removed.` });
+                } catch (error: any) {
+                  toast({ title: 'Delete Failed', description: error.message, variant: 'destructive' });
+                } finally {
+                  setTransactionToDelete(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
