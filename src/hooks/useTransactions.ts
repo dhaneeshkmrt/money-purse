@@ -65,8 +65,10 @@ export function useTransactions(tenantId: string | null, user: User | null) {
   const addTransaction = async (transaction: Omit<Transaction, 'id' | 'tenantId'| 'userId'>): Promise<string> => {
     if (!tenantId || !user) throw new Error("Tenant or user not available");
     const transactionData = normalizeTransaction({ ...transaction, tenantId: tenantId, userId: user.name });
+    const firestoreData = { ...transactionData };
+    delete (firestoreData as Partial<Transaction>).id;
     try {
-      const docRef = await addDoc(collection(db, "transactions"), transactionData);
+      const docRef = await addDoc(collection(db, "transactions"), firestoreData);
       const newTransaction = { ...transactionData, id: docRef.id };
       setTransactions(prev => sortTransactions([...prev, newTransaction]));
 
@@ -96,7 +98,9 @@ export function useTransactions(tenantId: string | null, user: User | null) {
     transactionsToAdd.forEach(transaction => {
       const docRef = doc(collection(db, "transactions"));
       const transactionData = normalizeTransaction({ ...transaction, tenantId: tenantId, userId: user?.name, microcategory: transaction.microcategory || '' });
-      batch.set(docRef, transactionData);
+      const firestoreData = { ...transactionData };
+      delete (firestoreData as Partial<Transaction>).id;
+      batch.set(docRef, firestoreData);
       newTransactions.push({ ...transactionData, id: docRef.id });
     });
 
@@ -126,11 +130,13 @@ export function useTransactions(tenantId: string | null, user: User | null) {
   const editTransaction = async (transactionId: string, transactionUpdate: Omit<Transaction, 'id' | 'tenantId' | 'userId'>) => {
     if (!tenantId || !user) return;
     const transactionData = normalizeTransaction({ ...transactionUpdate, tenantId: tenantId, userId: user.name });
+    const firestoreData = { ...transactionData };
+    delete (firestoreData as Partial<Transaction>).id;
     try {
         const oldTransaction = transactions.find(t => t.id === transactionId);
         const transactionRef = doc(db, "transactions", transactionId);
-        await updateDoc(transactionRef, transactionData);
-        const newTransaction = { id: transactionId, ...transactionData };
+        await updateDoc(transactionRef, firestoreData);
+        const newTransaction = { ...transactionData, id: transactionId };
         setTransactions(prev => 
             sortTransactions(prev.map(t => t.id === transactionId ? newTransaction : t))
         );
