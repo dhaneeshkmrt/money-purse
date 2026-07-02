@@ -27,7 +27,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { Eye, Wallet, TrendingUp, ArrowUpDown } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, isValid, parseISO } from 'date-fns';
 import { useState } from 'react';
 
 export default function VirtualAccountsPage() {
@@ -62,6 +62,17 @@ export default function VirtualAccountsPage() {
   const selectedAccountTransactions = selectedAccountId 
     ? getAccountTransactions(selectedAccountId) 
     : [];
+
+  const formatTransactionDate = (date?: string) => {
+    if (!date) return 'Unknown date';
+
+    try {
+      const parsed = parseISO(date);
+      return isValid(parsed) ? format(parsed, 'MMM dd, yyyy') : 'Invalid date';
+    } catch {
+      return 'Invalid date';
+    }
+  };
 
   if (loadingAccounts) {
     return (
@@ -190,7 +201,7 @@ export default function VirtualAccountsPage() {
                                     return (
                                       <TableRow key={txn.id}>
                                         <TableCell>
-                                          {format(parseISO(txn.date), 'MMM dd, yyyy')}
+                                          {formatTransactionDate(txn.date)}
                                         </TableCell>
                                         <TableCell>
                                           <Badge className={`${typeInfo.color} text-white`}>
@@ -282,7 +293,7 @@ export default function VirtualAccountsPage() {
                   return (
                     <TableRow key={txn.id}>
                       <TableCell>
-                        {format(parseISO(txn.date), 'MMM dd, yyyy')}
+                        {formatTransactionDate(txn.date)}
                       </TableCell>
                       <TableCell>{account?.categoryName || 'Unknown'}</TableCell>
                       <TableCell>

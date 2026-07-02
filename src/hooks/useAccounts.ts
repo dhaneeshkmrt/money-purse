@@ -80,7 +80,22 @@ export function useAccounts(tenantId: string | null, user: User | null) {
     const unsubscribe = onSnapshot(transactionsQuery, (snapshot) => {
       const transactionsData: AccountTransaction[] = [];
       snapshot.forEach((doc) => {
-        transactionsData.push({ id: doc.id, ...doc.data() } as AccountTransaction);
+        const data = doc.data() as Partial<AccountTransaction>;
+        const date = data.date ?? data.createdAt ?? new Date().toISOString();
+        const createdAt = data.createdAt ?? date;
+
+        transactionsData.push({
+          id: doc.id,
+          accountId: data.accountId ?? '',
+          categoryId: data.categoryId ?? '',
+          tenantId: data.tenantId ?? tenantId,
+          amount: data.amount ?? 0,
+          type: data.type ?? 'zero_balance',
+          description: data.description ?? '',
+          monthYear: data.monthYear ?? '',
+          date,
+          createdAt,
+        } as AccountTransaction);
       });
       setAccountTransactions(transactionsData);
     });

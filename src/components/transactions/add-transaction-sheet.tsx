@@ -62,7 +62,9 @@ const transactionSchema = z.object({
   }),
   time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (HH:MM)'),
   description: z.string().min(3, 'Description must be at least 3 characters.'),
-  amount: z.coerce.number().positive('Amount must be positive.'),
+  amount: z.coerce.number().refine((value) => value !== 0, {
+    message: 'Amount must not be zero.',
+  }),
   category: z.string().min(1, 'Please select a category.'),
   subcategory: z.string().min(1, 'Please select a subcategory.'),
   microcategory: z.string().optional(),
