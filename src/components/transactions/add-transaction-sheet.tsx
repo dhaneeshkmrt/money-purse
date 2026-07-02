@@ -62,7 +62,7 @@ const transactionSchema = z.object({
   }),
   time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (HH:MM)'),
   description: z.string().min(3, 'Description must be at least 3 characters.'),
-  amount: z.coerce.number().refine((value) => value !== 0, {
+  amount: z.number().finite().refine((value) => value !== 0, {
     message: 'Amount must not be zero.',
   }),
   category: z.string().min(1, 'Please select a category.'),
@@ -179,7 +179,7 @@ export default function AddTransactionSheet({
   const watchedAmount = form.watch('amount');
 
   const duplicateMatches = useMemo(() => {
-    if (!watchedAmount || watchedAmount <= 0 || isEditing) return [];
+    if (!Number.isFinite(watchedAmount) || watchedAmount === 0 || isEditing) return [];
     return filteredTransactions.filter(t => t.amount === watchedAmount);
   }, [watchedAmount, filteredTransactions, isEditing]);
 
@@ -423,6 +423,7 @@ export default function AddTransactionSheet({
                         </FormControl>
                         {calculationResult && <div className="text-xs text-muted-foreground pt-1">= {calculationResult}</div>}
                         {amountInWords && <div className="text-xs text-muted-foreground pt-1 font-medium italic">{amountInWords}</div>}
+                        <div className="text-xs text-muted-foreground pt-1">Negative amounts are allowed for refunds, credits, or reversals.</div>
                         {duplicateMatches.length > 0 && (
                           <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
                             <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">

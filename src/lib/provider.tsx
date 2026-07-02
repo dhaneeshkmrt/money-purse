@@ -187,7 +187,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   
   const availableYears = useMemo(() => {
-    const years = new Set(transactionsHook.transactions.map(t => getYear(parseISO(t.date))));
+    const years = new Set<number>();
+    transactionsHook.transactions.forEach((t) => {
+      try {
+        const transactionDate = parseISO(t.date || new Date().toISOString().split('T')[0]);
+        if (!Number.isNaN(transactionDate.getTime())) {
+          years.add(getYear(transactionDate));
+        }
+      } catch {
+        // Ignore malformed dates
+      }
+    });
+
     if (!years.has(new Date().getFullYear())) {
       years.add(new Date().getFullYear());
     }
@@ -195,9 +206,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [transactionsHook.transactions]);
 
   const filteredTransactions = useMemo(() => {
-    return transactionsHook.transactions.filter(t => {
-      const transactionDate = parseISO(t.date);
-      return getYear(transactionDate) === selectedYear && getMonth(transactionDate) === selectedMonth;
+    return transactionsHook.transactions.filter((t) => {
+      try {
+        const transactionDate = parseISO(t.date || new Date().toISOString().split('T')[0]);
+        return !Number.isNaN(transactionDate.getTime()) && getYear(transactionDate) === selectedYear && getMonth(transactionDate) === selectedMonth;
+      } catch {
+        return false;
+      }
     });
   }, [transactionsHook.transactions, selectedYear, selectedMonth]);
   

@@ -146,17 +146,31 @@ export function useCurrencyInput({ onValueChange }: UseCurrencyInputProps) {
   }, [settings.locale]);
 
   const processValue = useCallback((value: string) => {
-    const isExpression = /[+\-*/]/.test(value);
+    const trimmedValue = value.trim();
+    const simpleNumber = /^-?\d[\d.,]*$/.test(trimmedValue);
+    const isExpression = /[+\-*/]/.test(trimmedValue);
     setFormattedValue(value);
 
     let numericResult: number | null = null;
 
-    if (isExpression) {
-      const result = evaluate(value);
+    if (simpleNumber) {
+      const { decimal, group } = getLocaleParts();
+      const cleanValue = trimmedValue
+        .replace(new RegExp(`\\${group}`, 'g'), '')
+        .replace(decimal, '.')
+        .replace(/,/g, '');
+      const parsedValue = parseFloat(cleanValue);
+      if (!Number.isNaN(parsedValue)) {
+        numericResult = parsedValue;
+      }
+      setCalculationResult(null);
+      setLastExpression(null);
+    } else if (isExpression) {
+      const result = evaluate(trimmedValue);
       if (result !== null && isFinite(result)) {
         numericResult = result;
         setCalculationResult(format(result));
-        setLastExpression(value.trim());
+        setLastExpression(trimmedValue);
       } else {
         setCalculationResult(null);
       }
@@ -164,9 +178,9 @@ export function useCurrencyInput({ onValueChange }: UseCurrencyInputProps) {
       setCalculationResult(null);
       setLastExpression(null);
       const { decimal, group } = getLocaleParts();
-      const cleanValue = value.replace(new RegExp(`\\${group}`, 'g'), '').replace(decimal, '.');
+      const cleanValue = trimmedValue.replace(new RegExp(`\\${group}`, 'g'), '').replace(decimal, '.');
       const parsedValue = parseFloat(cleanValue);
-      if (!isNaN(parsedValue)) {
+      if (!Number.isNaN(parsedValue)) {
         numericResult = parsedValue;
       }
     }
