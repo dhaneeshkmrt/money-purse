@@ -2,15 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const ALLOWED_ORIGIN = "https://pm2-stock-portfolio.netlify.app,http://localhost:4200,http://localhost:3000,http://localhost:9002";
+const ALLOWED_ORIGINS = [
+  "https://pm2-stock-portfolio.netlify.app",
+  "http://localhost:4200",
+  "http://localhost:3000",
+  "http://localhost:9002",
+] as const;
 
-function getCorsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+function getCorsHeaders(origin?: string) {
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     Vary: "Origin",
-  } as const;
+  };
+
+  if (origin && ALLOWED_ORIGINS.includes(origin as typeof ALLOWED_ORIGINS[number])) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+
+  return headers;
 }
 
 function sanitizeFilename(filename: string): string {
@@ -24,10 +34,10 @@ function getFilenameFromUrl(url: URL): string {
   return sanitizeFilename(fallback || "download");
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, {
     status: 204,
-    headers: getCorsHeaders(),
+    headers: getCorsHeaders(request.headers.get("origin") || undefined),
   });
 }
 
@@ -81,7 +91,7 @@ export async function GET(request: NextRequest) {
       "Content-Type": contentType,
       "Content-Disposition": `attachment; filename="${filename}"`,
       "Cache-Control": "no-store",
-      ...getCorsHeaders(),
+      ...getCorsHeaders(request.headers.get("origin") || undefined),
     });
 
     const contentLength = upstreamResponse.headers.get("content-length");
