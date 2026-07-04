@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const ALLOWED_ORIGIN = "https://pm2-stock-portfolio.netlify.app";
+const ALLOWED_ORIGIN = "https://pm2-stock-portfolio.netlify.app,http://localhost:4200,http://localhost:3000,http://localhost:9002";
 
 function getCorsHeaders() {
   return {
