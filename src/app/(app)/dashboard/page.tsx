@@ -8,6 +8,7 @@ import { MonthlyCategoryChart } from '@/components/dashboard/monthly-category-ch
 import { CumulativeExpenseChart } from '@/components/dashboard/cumulative-expense-chart';
 import RemindersSection from '@/components/dashboard/reminders-section';
 import InsuranceReminders from '@/components/dashboard/insurance-reminders';
+import NotesReminderSection from '@/components/dashboard/notes-reminder-section';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,7 @@ export default function DashboardPage() {
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
         {userTenant?.featureAccess?.reminders && <RemindersSection />}
         {userTenant?.featureAccess?.insurance && <InsuranceReminders />}
+        {userTenant?.featureAccess?.notes !== false && <NotesReminderSection />}
       </div>
 
       <DashboardStats transactions={filteredTransactions} year={selectedYear} month={selectedMonth} />

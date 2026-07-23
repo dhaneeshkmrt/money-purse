@@ -6,7 +6,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, ReceiptText, Shapes, Shield, Building2, Settings, Landmark, Loader2, DatabaseBackup, Database, Wallet, Wand2, Calculator, BellRing, ScrollText, HandCoins, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, ReceiptText, Shapes, Shield, Building2, Settings, Landmark, Loader2, DatabaseBackup, Database, Wallet, Wand2, Calculator, BellRing, ScrollText, HandCoins, ShieldCheck, NotebookPen } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
@@ -17,7 +17,7 @@ type NavItemWithHref = {
   href: string;
   label: string;
   icon: React.ComponentType;
-  featureFlag?: 'balanceSheet' | 'virtualAccounts' | 'yearlyReport' | 'aiImageStudio' | 'calculators' | 'admin' | 'reminders' | 'logs' | 'borrowings' | 'insurance'
+  featureFlag?: 'balanceSheet' | 'virtualAccounts' | 'yearlyReport' | 'aiImageStudio' | 'calculators' | 'admin' | 'reminders' | 'logs' | 'borrowings' | 'insurance' | 'notes'
 };
 
 type NavItemWithSubItems = {
@@ -42,6 +42,7 @@ const allNavItems: NavItem[] = [
   { href: '/transactions', label: 'Transactions', icon: ReceiptText },
   { href: '/categories', label: 'Categories', icon: Shapes },
   { href: '/reminders', label: 'Reminders', icon: BellRing, featureFlag: 'reminders' },
+  { href: '/notes', label: 'Notes', icon: NotebookPen, featureFlag: 'notes' },
   {
       label: 'Borrowings',
       icon: HandCoins,

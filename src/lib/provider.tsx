@@ -24,7 +24,8 @@ import type {
   BorrowingRelationship,
   Insurance,
   InsuranceType,
-  InsuranceStatus
+  InsuranceStatus,
+  Note,
 } from './types';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -41,6 +42,7 @@ import { useReminders } from '@/hooks/useReminders';
 import { useLogs } from '@/hooks/useLogs';
 import { useBorrowings } from '@/hooks/useBorrowings';
 import { useInsurance } from '@/hooks/useInsurance';
+import { useNotes } from '@/hooks/useNotes';
 import { generateReminderInstances } from './reminder-utils';
 import { getYear, getMonth, parseISO, format, startOfMonth } from 'date-fns';
 
@@ -144,6 +146,17 @@ interface AppContextType {
   deleteInsurance: (id: string) => Promise<void>;
   getInsuranceStatus: (expiryDate: string) => InsuranceStatus;
 
+  // Notes
+  notes: Note[];
+  addNote: (data: Omit<Note, 'id' | 'tenantId' | 'userId' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  editNote: (id: string, data: Partial<Omit<Note, 'id' | 'tenantId' | 'userId' | 'createdAt'>>) => Promise<void>;
+  deleteNote: (id: string) => Promise<void>;
+  toggleNoteItem: (noteId: string, itemId: string) => Promise<void>;
+  pinNote: (id: string, pin: boolean) => Promise<void>;
+  archiveNote: (id: string) => Promise<void>;
+  dismissNoteReminder: (id: string) => Promise<void>;
+  loadingNotes: boolean;
+
   logs: AuditLog[];
   generateCurrentMonthCsv: () => string | null;
 
@@ -184,6 +197,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const logsHook = useLogs(selectedTenantId);
   const borrowingsHook = useBorrowings(selectedTenantId, user);
   const insuranceHook = useInsurance(selectedTenantId, user);
+  const notesHook = useNotes(selectedTenantId, user);
 
   
   const availableYears = useMemo(() => {
@@ -485,7 +499,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return Papa.unparse(dataToExport, { header: false });
   }, [tenantHook.selectedTenantId, tenantHook.tenants, categoriesHook.categories, selectedYear, selectedMonth, filteredTransactions]);
 
-  const loading = loadingAuth || tenantHook.loadingTenants || settingsHook.loadingSettings || categoriesHook.loadingCategories || transactionsHook.loadingTransactions || accountsHook.loading || logsHook.loadingLogs || borrowingsHook.loading || insuranceHook.loading;
+  const loading = loadingAuth || tenantHook.loadingTenants || settingsHook.loadingSettings || categoriesHook.loadingCategories || transactionsHook.loadingTransactions || accountsHook.loading || logsHook.loadingLogs || borrowingsHook.loading || insuranceHook.loading || notesHook.loadingNotes;
 
   const contextValue = useMemo(() => ({
     user,
@@ -555,6 +569,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     pendingReminders,
     completedReminders,
 
+    // Notes
+    notes: notesHook.notes,
+    addNote: notesHook.addNote,
+    editNote: notesHook.editNote,
+    deleteNote: notesHook.deleteNote,
+    toggleNoteItem: notesHook.toggleNoteItem,
+    pinNote: notesHook.pinNote,
+    archiveNote: notesHook.archiveNote,
+    dismissNoteReminder: notesHook.dismissNoteReminder,
+    loadingNotes: notesHook.loadingNotes,
+
     loading,
     loadingAuth,
     loadingCategories: categoriesHook.loadingCategories,
@@ -568,7 +593,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loadingBorrowings: borrowingsHook.loading,
     loadingInsurance: insuranceHook.loading,
     isCopyingBudget: categoriesHook.isCopyingBudget,
-  }), [user, signIn, signOut, signInWithGoogle, tenantHook, settingsHook, categoriesHook, transactionsHook, accountsHook, remindersHook, logsHook, borrowingsHook, insuranceHook, addTransactionWithLockCheck, addMultipleTransactionsWithLockCheck, editTransactionWithLockCheck, deleteTransactionWithLockCheck, handleCategoryTransfer, processMonthEnd, loading, loadingAuth, filteredTransactions, selectedYear, selectedMonth, availableYears, selectedMonthName, fetchBalanceSheet, saveBalanceSheet, generateCurrentMonthCsv, reminderInstances, pendingReminders, completedReminders]);
+  }), [user, signIn, signOut, signInWithGoogle, tenantHook, settingsHook, categoriesHook, transactionsHook, accountsHook, remindersHook, logsHook, borrowingsHook, insuranceHook, notesHook, addTransactionWithLockCheck, addMultipleTransactionsWithLockCheck, editTransactionWithLockCheck, deleteTransactionWithLockCheck, handleCategoryTransfer, processMonthEnd, loading, loadingAuth, filteredTransactions, selectedYear, selectedMonth, availableYears, selectedMonthName, fetchBalanceSheet, saveBalanceSheet, generateCurrentMonthCsv, reminderInstances, pendingReminders, completedReminders]);
 
   return (
     <ThemeProvider>

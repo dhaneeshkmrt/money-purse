@@ -12,6 +12,7 @@ export type FeatureAccess = {
   logs?: boolean;
   borrowings?: boolean;
   insurance?: boolean;
+  notes?: boolean;
 };
 
 export type Microcategory = {
@@ -282,6 +283,46 @@ export type Insurance = {
   expiryDate: string;
   reminderDate: string; // Date when user wants to be notified for renewal
   notes?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// Notes System Types
+export type NoteVariety = 'quick' | 'detailed' | 'list' | 'voice';
+export type NoteType = 'general' | 'reminder' | 'todo' | 'shopping';
+export type NoteColor = 'default' | 'yellow' | 'red' | 'green' | 'blue' | 'purple';
+
+export type NoteListItem = {
+  id: string;
+  text: string;
+  isDone: boolean;
+};
+
+export type Note = {
+  id: string;
+  tenantId: string;
+  userId: string;
+  title: string;
+  variety: NoteVariety;
+  type: NoteType;
+  color: NoteColor;
+  isPinned: boolean;
+  isArchived: boolean;
+
+  // Quick / Detailed note content
+  content?: string;
+
+  // List / Shopping / Todo items
+  items?: NoteListItem[];
+
+  // Voice note - base64 data URL
+  audioDataUrl?: string;
+
+  // Reminder-type specific fields
+  reminderDate?: string;   // YYYY-MM-DD
+  reminderTime?: string;   // HH:mm
+  reminderDismissed?: boolean;
+
   createdAt: string;
   updatedAt: string;
 };
