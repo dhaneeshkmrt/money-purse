@@ -40,11 +40,13 @@ const sortTransactions = (transactions: Transaction[]) => {
 export function useTransactions(tenantId: string | null, user: User | null) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(true);
+  const [isSyncingTransactions, setIsSyncingTransactions] = useState(false);
 
   useEffect(() => {
     if (!tenantId) {
       setTransactions([]);
       setLoadingTransactions(false);
+      setIsSyncingTransactions(false);
       return;
     }
 
@@ -56,10 +58,12 @@ export function useTransactions(tenantId: string | null, user: User | null) {
         const fetchedTransactions = snapshot.docs.map(doc => normalizeTransaction({ id: doc.id, ...doc.data() }));
         setTransactions(sortTransactions(fetchedTransactions));
         setLoadingTransactions(false);
+        setIsSyncingTransactions(snapshot.metadata.fromCache);
       },
       (error) => {
         console.error("Error fetching transactions: ", error);
         setLoadingTransactions(false);
+        setIsSyncingTransactions(false);
       }
     );
 
@@ -182,6 +186,7 @@ export function useTransactions(tenantId: string | null, user: User | null) {
   return {
     transactions,
     loadingTransactions,
+    isSyncingTransactions,
     addTransaction,
     addMultipleTransactions,
     editTransaction,

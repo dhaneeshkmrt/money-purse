@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, orderBy, doc, where, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, setDoc, query, orderBy, doc, where, writeBatch, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Tenant, User, Category, Transaction, Settings } from '@/lib/types';
 import { format } from 'date-fns';
@@ -22,9 +22,44 @@ export function useTenants(
     seedDefaultSettings: (tenantId: string, userId?: string) => Promise<any>,
     user: User | null
 ) {
-    const [tenants, setTenants] = useState<Tenant[]>([]);
-    const [loadingTenants, setLoadingTenants] = useState(true);
-    const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+    const [tenants, setTenants] = useState<Tenant[]>(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const storedAuth = localStorage.getItem('expenseflow_auth');
+                if (storedAuth) {
+                    const authData = JSON.parse(storedAuth);
+                    if (authData.tenant) return [authData.tenant];
+                }
+            } catch (e) {}
+        }
+        return [];
+    });
+    const [loadingTenants, setLoadingTenants] = useState<boolean>(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const storedAuth = localStorage.getItem('expenseflow_auth');
+                if (storedAuth) {
+                    const authData = JSON.parse(storedAuth);
+                    if (authData.tenant) return false;
+                }
+            } catch (e) {}
+        }
+        return true;
+    });
+    const [selectedTenantId, setSelectedTenantId] = useState<string | null>(() => {
+        if (user?.tenantId) return user.tenantId;
+        if (typeof window !== 'undefined') {
+            try {
+                const storedAuth = localStorage.getItem('expenseflow_auth');
+                if (storedAuth) {
+                    const authData = JSON.parse(storedAuth);
+                    if (authData.user?.tenantId) return authData.user.tenantId;
+                }
+            } catch (e) {}
+        }
+        return null;
+    });
+    const [isSyncingTenants, setIsSyncingTenants] = useState<boolean>(false);
 
     const userTenant = useMemo(() => {
         if (!user || !tenants.length) return null;
@@ -41,22 +76,22 @@ export function useTenants(
         return user.name === userTenant.name;
     }, [user, userTenant]);
 
-
     useEffect(() => {
-        const fetchTenants = async () => {
-            setLoadingTenants(true);
-            try {
-                const tenantsCollection = collection(db, "tenants");
-                const querySnapshot = await getDocs(query(tenantsCollection, orderBy("name")));
-                let fetchedTenants = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tenant));
-                setTenants(fetchedTenants);
-            } catch (error) {
-                console.error("Error fetching tenants: ", error);
-            } finally {
-                setLoadingTenants(false);
-            }
-        };
-        fetchTenants();
+        const tenantsCollection = collection(db, "tenants");
+        const q = query(tenantsCollection, orderBy("name"));
+        
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const fetchedTenants = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tenant));
+            setTenants(fetchedTenants);
+            setLoadingTenants(false);
+            setIsSyncingTenants(querySnapshot.metadata.fromCache);
+        }, (error) => {
+            console.error("Error listening to tenants: ", error);
+            setLoadingTenants(false);
+            setIsSyncingTenants(false);
+        });
+
+        return () => unsubscribe();
     }, []);
     
     useEffect(() => {
@@ -250,6 +285,7 @@ export function useTenants(
     return {
         tenants,
         loadingTenants,
+        isSyncingTenants,
         selectedTenantId,
         setSelectedTenantId: handleSetSelectedTenantId,
         addTenant,

@@ -11,8 +11,31 @@ import { useToast } from './use-toast';
 const AUTH_STORAGE_KEY = 'expenseflow_auth';
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+        if (storedAuth) {
+          return JSON.parse(storedAuth).user;
+        }
+      } catch (error) {
+        console.error("Failed to parse auth data from localStorage", error);
+      }
+    }
+    return null;
+  });
+  const [loadingAuth, setLoadingAuth] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+        if (storedAuth) {
+          const authData = JSON.parse(storedAuth);
+          if (authData.user) return false;
+        }
+      } catch (error) {}
+    }
+    return true;
+  });
   const { toast } = useToast();
 
   useEffect(() => {

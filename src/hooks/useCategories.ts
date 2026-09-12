@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Category, Subcategory, Microcategory, CategoryBudget, User } from '@/lib/types';
 import {
   Briefcase, Gift, HeartPulse, Home, Utensils, Car, Plane, ShieldAlert,
@@ -9,7 +9,7 @@ import {
   Apple, Building, User as UserIcon, Calendar
 } from 'lucide-react';
 import { db } from '@/lib/firebase';
-import { collection, doc, writeBatch, updateDoc, deleteDoc, setDoc, getDocs, query, where, getDoc } from 'firebase/firestore';
+import { collection, doc, writeBatch, updateDoc, deleteDoc, setDoc, getDocs, query, where, getDoc, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { logChange } from '@/lib/logger';
 
@@ -52,6 +52,13 @@ export function useCategories(tenantId: string | null, user: User | null, select
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [isCopyingBudget, setIsCopyingBudget] = useState(false);
+  const [isSyncingCategories, setIsSyncingCategories] = useState(false);
+
+  const rawCategoriesRef = useRef<Omit<Category, 'budget'>[]>([]);
+  const rawBudgetsRef = useRef<CategoryBudget['budgets']>({});
+  const categoriesFromCacheRef = useRef<boolean>(true);
+  const budgetsFromCacheRef = useRef<boolean>(true);
+  const copiedMonthRef = useRef<Record<string, boolean>>({});
 
   const getMonthKey = useCallback((year: number, month: number) => {
     return format(new Date(year, month), 'yyyy-MM');
@@ -103,100 +110,151 @@ export function useCategories(tenantId: string | null, user: User | null, select
 
   }, [getMonthKey]);
   
-  const fetchCategories = useCallback(async (tenantIdToFetch: string, year: number, month: number) => {
-    setLoadingCategories(true);
-    setIsCopyingBudget(false);
-    try {
-      const q = query(collection(db, 'categories'), where("tenantId", "==", tenantIdToFetch));
-      let querySnapshot = await getDocs(q);
+  const buildFinalCategories = useCallback((
+    rawCategories: Omit<Category, 'budget'>[],
+    budgets: CategoryBudget['budgets'],
+    year: number,
+    month: number,
+    tenantIdToFetch: string
+  ): Category[] => {
+    const currentMonthKey = getMonthKey(year, month);
+    let monthBudgets = budgets[currentMonthKey];
 
-      if (querySnapshot.empty) {
-          await seedDefaultCategories(tenantIdToFetch);
-          querySnapshot = await getDocs(q);
-      }
+    if (!monthBudgets) {
+      // Find the most recent previous month with budgets
+      const previousMonthKeys = Object.keys(budgets).sort().reverse();
+      const mostRecentMonthKey = previousMonthKeys.find(key => key < currentMonthKey);
 
-      const fetchedCategories = querySnapshot.docs.map((doc, index) => {
-          const data = doc.data();
-          const catDesc = data.description || getDefaultCategoryDescription(data.name);
-          return {
-            id: doc.id,
-            name: data.name,
-            icon: getIconComponent(data.icon),
-            description: catDesc,
-            subcategories: (data.subcategories || []).map((sub: any, sIdx: number) => {
-              const subId = sub.id || `${doc.id}_sub_${sIdx}`;
-              const subDesc = sub.description || getDefaultSubcategoryDescription(data.name, sub.name);
-              return {
-                ...sub,
-                id: subId,
-                description: subDesc,
-                microcategories: (sub.microcategories || []).map((micro: any, mIdx: number) => ({
-                  ...micro,
-                  id: micro.id || `${subId}_micro_${mIdx}`,
-                  description: micro.description || '',
-                }))
-              };
-            }),
-            tenantId: data.tenantId,
-            budget: 0, // Default budget, will be filled next
-            order: data.order !== undefined ? data.order : index,
-          } as Category;
-        });
-
-      fetchedCategories.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-      // Fetch budget data
-      const budgetDocRef = doc(db, 'budgets', tenantIdToFetch);
-      const budgetDocSnap = await getDoc(budgetDocRef);
-      let allBudgets: CategoryBudget['budgets'] = {};
-
-      if (budgetDocSnap.exists()) {
-        allBudgets = (budgetDocSnap.data() as CategoryBudget).budgets || {};
-      }
-
-      const currentMonthKey = getMonthKey(year, month);
-      
-      if (!allBudgets[currentMonthKey]) {
-        setIsCopyingBudget(true);
-        // Find the most recent previous month with budgets
-        const previousMonthKeys = Object.keys(allBudgets).sort().reverse();
-        const mostRecentMonthKey = previousMonthKeys.find(key => key < currentMonthKey);
-        
-        if (mostRecentMonthKey) {
-            allBudgets[currentMonthKey] = allBudgets[mostRecentMonthKey];
-            await setDoc(budgetDocRef, { budgets: allBudgets }, { merge: true });
-        } else {
-            allBudgets[currentMonthKey] = {}; // No previous budget, start fresh
+      if (mostRecentMonthKey && budgets[mostRecentMonthKey]) {
+        monthBudgets = budgets[mostRecentMonthKey];
+        const copyKey = `${tenantIdToFetch}_${currentMonthKey}`;
+        if (!copiedMonthRef.current[copyKey]) {
+          copiedMonthRef.current[copyKey] = true;
+          setIsCopyingBudget(true);
+          const updatedBudgets = { ...budgets, [currentMonthKey]: monthBudgets };
+          const budgetDocRef = doc(db, 'budgets', tenantIdToFetch);
+          setDoc(budgetDocRef, { budgets: updatedBudgets }, { merge: true })
+            .catch(err => console.error("Error auto-copying budgets:", err))
+            .finally(() => setIsCopyingBudget(false));
         }
+      } else {
+        monthBudgets = {};
       }
-
-      const finalCategories = fetchedCategories.map(cat => ({
-        ...cat,
-        budget: allBudgets[currentMonthKey]?.[cat.id] || 0,
-        subcategories: cat.subcategories.map(sub => ({
-          ...sub,
-          budget: allBudgets[currentMonthKey]?.[sub.id] || 0,
-        })),
-      }));
-      
-      setCategories(finalCategories);
-
-    } catch (error) {
-      console.error("Error fetching categories: ", error);
-    } finally {
-      setLoadingCategories(false);
-      setIsCopyingBudget(false);
     }
-  }, [seedDefaultCategories, getMonthKey]);
+
+    return rawCategories.map(cat => ({
+      ...cat,
+      budget: monthBudgets?.[cat.id] || 0,
+      subcategories: (cat.subcategories || []).map(sub => ({
+        ...sub,
+        budget: monthBudgets?.[sub.id] || 0,
+      })),
+    }));
+  }, [getMonthKey]);
 
   useEffect(() => {
-    if (tenantId) {
-      fetchCategories(tenantId, selectedYear, selectedMonth);
-    } else {
+    if (!tenantId) {
       setCategories([]);
       setLoadingCategories(false);
+      setIsSyncingCategories(false);
+      return;
     }
-  }, [tenantId, selectedYear, selectedMonth, fetchCategories]);
+
+    setLoadingCategories(true);
+    let categoriesLoaded = false;
+    let budgetsLoaded = false;
+
+    const checkReadyAndSet = () => {
+      const finalCats = buildFinalCategories(
+        rawCategoriesRef.current,
+        rawBudgetsRef.current,
+        selectedYear,
+        selectedMonth,
+        tenantId
+      );
+      setCategories(finalCats);
+      // As soon as cache or server delivers data, release loading screen
+      if (categoriesLoaded || budgetsLoaded || rawCategoriesRef.current.length > 0) {
+        setLoadingCategories(false);
+      }
+      setIsSyncingCategories(categoriesFromCacheRef.current || budgetsFromCacheRef.current);
+    };
+
+    // If categories are already cached in memory, compute immediately on month change
+    if (rawCategoriesRef.current.length > 0) {
+      checkReadyAndSet();
+    }
+
+    const q = query(collection(db, 'categories'), where("tenantId", "==", tenantId));
+    const budgetDocRef = doc(db, 'budgets', tenantId);
+
+    const unsubCategories = onSnapshot(q, async (snapshot) => {
+      categoriesFromCacheRef.current = snapshot.metadata.fromCache;
+      categoriesLoaded = true;
+
+      if (snapshot.empty && !snapshot.metadata.fromCache) {
+        // Only seed if empty and confirmed from server!
+        await seedDefaultCategories(tenantId);
+        return;
+      }
+
+      const fetchedCategories = snapshot.docs.map((docSnap, index) => {
+        const data = docSnap.data();
+        const catDesc = data.description || getDefaultCategoryDescription(data.name);
+        return {
+          id: docSnap.id,
+          name: data.name,
+          icon: getIconComponent(data.icon),
+          description: catDesc,
+          subcategories: (data.subcategories || []).map((sub: any, sIdx: number) => {
+            const subId = sub.id || `${docSnap.id}_sub_${sIdx}`;
+            const subDesc = sub.description || getDefaultSubcategoryDescription(data.name, sub.name);
+            return {
+              ...sub,
+              id: subId,
+              description: subDesc,
+              microcategories: (sub.microcategories || []).map((micro: any, mIdx: number) => ({
+                ...micro,
+                id: micro.id || `${subId}_micro_${mIdx}`,
+                description: micro.description || '',
+              }))
+            };
+          }),
+          tenantId: data.tenantId,
+          order: data.order !== undefined ? data.order : index,
+        };
+      });
+
+      fetchedCategories.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      rawCategoriesRef.current = fetchedCategories;
+      checkReadyAndSet();
+    }, (error) => {
+      console.error("Error listening to categories:", error);
+      setLoadingCategories(false);
+      setIsSyncingCategories(false);
+    });
+
+    const unsubBudgets = onSnapshot(budgetDocRef, (docSnap) => {
+      budgetsFromCacheRef.current = docSnap.metadata.fromCache;
+      budgetsLoaded = true;
+
+      if (docSnap.exists()) {
+        rawBudgetsRef.current = (docSnap.data() as CategoryBudget).budgets || {};
+      } else {
+        rawBudgetsRef.current = {};
+      }
+      checkReadyAndSet();
+    }, (error) => {
+      console.error("Error listening to budgets:", error);
+      budgetsLoaded = true;
+      checkReadyAndSet();
+    });
+
+    return () => {
+      unsubCategories();
+      unsubBudgets();
+    };
+  }, [tenantId, selectedYear, selectedMonth, buildFinalCategories, seedDefaultCategories]);
 
   const findCategory = (categoryId: string) => {
     const category = categories.find(c => c.id === categoryId);
@@ -595,6 +653,7 @@ export function useCategories(tenantId: string | null, user: User | null, select
   return {
     categories,
     loadingCategories,
+    isSyncingCategories,
     addCategory, editCategory, deleteCategory,
     addSubcategory, editSubcategory, deleteSubcategory,
     addMicrocategory, editMicrocategory, deleteMicrocategory,

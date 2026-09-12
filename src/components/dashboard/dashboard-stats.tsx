@@ -16,7 +16,7 @@ interface DashboardStatsProps {
 }
 
 export function DashboardStats({ transactions, year, month }: DashboardStatsProps) {
-    const { loading, loadingSettings } = useApp();
+    const { loadingTransactions } = useApp();
     const formatCurrency = useCurrencyFormatter();
 
     const stats = useMemo(() => {
@@ -40,7 +40,7 @@ export function DashboardStats({ transactions, year, month }: DashboardStatsProp
 
     }, [transactions]);
     
-    if (loading || loadingSettings) {
+    if (loadingTransactions && !transactions.length) {
         return (
             <div className="grid gap-6 md:grid-cols-2">
                 {[...Array(2)].map((_, i) => (
