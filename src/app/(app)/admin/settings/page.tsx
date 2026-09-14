@@ -10,9 +10,12 @@ import { Input } from '@/components/ui/input';
 import { useApp } from '@/lib/provider';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, PlusCircle, Trash2, Copy, RefreshCw, Palette, Moon, Sun, Download, Sparkles, AlertCircle, Bot, Cpu } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, Copy, RefreshCw, Palette, Moon, Sun, Download, Sparkles, AlertCircle, Bot, Cpu, Building2, ChevronsUpDown, Check } from 'lucide-react';
 import type { Settings, Tenant } from '@/lib/types';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
 import {
   Form,
   FormControl,
@@ -97,7 +100,7 @@ const colorThemes = [
 
 export default function SettingsPage() {
   const { 
-    user, settings, updateSettings, loadingSettings, selectedTenantId, tenants, editTenant, 
+    user, settings, updateSettings, loadingSettings, selectedTenantId, setSelectedTenantId, loadingTenants, isAdminUser, tenants, editTenant, 
     isMainTenantUser, generateCurrentMonthCsv, copyCurrentMonthToClipboard, selectedMonth, selectedMonthName, 
     selectedYear, categories 
   } = useApp();
@@ -105,6 +108,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   
   const [isTenantSubmitting, setIsTenantSubmitting] = useState(false);
+  const [tenantPopoverOpen, setTenantPopoverOpen] = useState(false);
 
   const settingsForm = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
@@ -318,6 +322,87 @@ export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-6 pb-10">
       <h1 className="text-3xl font-bold tracking-tight text-primary">Settings</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-primary" />
+            Active Account
+          </CardTitle>
+          <CardDescription>
+            {isAdminUser 
+              ? "Select the active account/tenant to view and manage associated transactions, budgets, and settings."
+              : "Your currently active account workspace."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border bg-card/50">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-base">
+                  {currentTenant ? currentTenant.name : "No account selected"}
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                  Active
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {currentTenant ? `Tenant ID: ${currentTenant.id}` : "Please select an account"}
+              </p>
+            </div>
+
+            {isAdminUser && (
+              <Popover open={tenantPopoverOpen} onOpenChange={setTenantPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={tenantPopoverOpen}
+                    className="w-full sm:w-[240px] justify-between cursor-pointer"
+                    disabled={loadingTenants}
+                  >
+                    <span className="truncate">{currentTenant ? currentTenant.name : "Select account..."}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[240px] p-0" align="end">
+                  <Command>
+                    <CommandInput placeholder="Search account..." />
+                    <CommandList>
+                      <CommandEmpty>No account found.</CommandEmpty>
+                      <CommandGroup>
+                        {tenants.map((tenant) => (
+                          <CommandItem
+                            key={tenant.id}
+                            value={tenant.name}
+                            onSelect={() => {
+                              setSelectedTenantId(tenant.id);
+                              setTenantPopoverOpen(false);
+                              toast({
+                                title: "Account Switched",
+                                description: `Switched active account to ${tenant.name}.`,
+                              });
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedTenantId === tenant.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <span className="truncate">{tenant.name}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+        </CardContent>
+      </Card>
       
       {isMainTenantUser && (
         <Card>

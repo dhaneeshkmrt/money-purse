@@ -181,10 +181,33 @@ export default function AddTransactionSheet({
 
   const selectedDate = form.watch('date');
   const watchedAmount = form.watch('amount');
-
   const duplicateMatches = useMemo(() => {
     if (!Number.isFinite(watchedAmount) || watchedAmount === 0 || isEditing) return [];
-    return filteredTransactions.filter(t => t.amount === watchedAmount);
+
+    const amountNum = watchedAmount;
+    const amountStr = String(amountNum);
+    const escapedAmount = amountStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regexPattern = Number.isInteger(amountNum)
+      ? new RegExp(`(?:^|[^0-9])${escapedAmount}(?:\\.00?)?(?:[^0-9]|$)`)
+      : new RegExp(`(?:^|[^0-9])${escapedAmount}0?(?:[^0-9]|$)`);
+
+    return filteredTransactions
+      .map(t => {
+        const isAmountMatch = t.amount === amountNum;
+        let isDescMatch = false;
+
+        if (t.description) {
+          const strippedDesc = t.description.replace(/,/g, '');
+          isDescMatch = regexPattern.test(strippedDesc) || strippedDesc.includes(amountStr);
+        }
+
+        return {
+          ...t,
+          isAmountMatch,
+          isDescMatch,
+        };
+      })
+      .filter(t => t.isAmountMatch || t.isDescMatch);
   }, [watchedAmount, filteredTransactions, isEditing]);
 
   const isSelectedMonthLocked = useMemo(() => {
@@ -468,17 +491,29 @@ export default function AddTransactionSheet({
                         {duplicateMatches.length > 0 && (
                           <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
                             <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
-                              <AlertTriangle className="h-3.5 w-3.5" />
-                              {duplicateMatches.length} existing transaction{duplicateMatches.length !== 1 ? 's' : ''} with same amount
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                              {duplicateMatches.length} existing transaction{duplicateMatches.length !== 1 ? 's' : ''} matching amount or description
                             </div>
-                            <div className="space-y-1">
+                            <div className="space-y-1.5">
                               {duplicateMatches.slice(0, 5).map(t => (
-                                <div key={t.id} className="flex items-center justify-between text-xs">
-                                  <span className="text-muted-foreground truncate mr-2">
+                                <div key={t.id} className="flex items-center justify-between text-xs gap-2">
+                                  <span className="text-muted-foreground truncate mr-2 min-w-0">
                                     <span className="font-medium text-foreground">{t.description}</span>
                                     {' · '}{t.category}{t.subcategory ? ` › ${t.subcategory}` : ''}{t.microcategory ? ` › ${t.microcategory}` : ''}
                                   </span>
-                                  <span className="text-muted-foreground shrink-0">{t.date}</span>
+                                  <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground">
+                                    {t.isDescMatch && !t.isAmountMatch && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-medium">
+                                        In desc ({formatCurrency(t.amount)})
+                                      </span>
+                                    )}
+                                    {t.isAmountMatch && t.isDescMatch && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-medium">
+                                        Amount & desc
+                                      </span>
+                                    )}
+                                    <span>{t.date}</span>
+                                  </div>
                                 </div>
                               ))}
                               {duplicateMatches.length > 5 && (

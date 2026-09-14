@@ -40,35 +40,35 @@ export function OfflineIndicator() {
 
   if (!isOnline) {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full shadow-sm animate-pulse">
-        <WifiOff className="w-3.5 h-3.5" />
-        <span>Offline Mode (Changes saved locally)</span>
+      <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full shadow-sm animate-pulse shrink-0">
+        <WifiOff className="w-3.5 h-3.5 shrink-0" />
+        <span><span className="hidden sm:inline">Offline Mode (Changes saved locally)</span><span className="sm:hidden">Offline</span></span>
       </div>
     );
   }
 
   if (showSyncedToast) {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full shadow-sm transition-all duration-300">
-        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-        <span>Back Online — Synced with Firestore</span>
+      <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full shadow-sm transition-all duration-300 shrink-0">
+        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+        <span><span className="hidden sm:inline">Back Online — Synced</span><span className="sm:hidden">Online</span></span>
       </div>
     );
   }
 
   if (isSyncing) {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-full shadow-sm transition-all duration-300">
-        <RefreshCw className="w-3.5 h-3.5 text-sky-400 animate-spin" />
-        <span>Syncing with cloud...</span>
+      <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-medium bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-full shadow-sm transition-all duration-300 shrink-0">
+        <RefreshCw className="w-3.5 h-3.5 text-sky-400 animate-spin shrink-0" />
+        <span><span className="hidden sm:inline">Syncing with cloud...</span><span className="sm:hidden">Syncing</span></span>
       </div>
     );
   }
 
   if (showJustSynced) {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full shadow-sm transition-all duration-300">
-        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+      <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full shadow-sm transition-all duration-300 shrink-0">
+        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
         <span>Up to date</span>
       </div>
     );
