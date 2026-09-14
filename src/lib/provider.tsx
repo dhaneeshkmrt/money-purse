@@ -140,6 +140,8 @@ interface AppContextType {
   editBorrowing: (id: string, data: { startDate: string, dueDate: string, notes?: string, amount?: number }) => Promise<void>;
   addRepayment: (borrowingId: string, amount: number, date: string, notes?: string) => Promise<void>;
   deleteBorrowing: (id: string) => Promise<void>;
+  closeBorrowing: (id: string, isClosed?: boolean) => Promise<void>;
+  closeAllZeroBalanceBorrowings: () => Promise<void>;
   getBorrowingStatus: (borrowing: Borrowing) => BorrowingStatus;
 
   // Insurance
@@ -808,6 +810,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     editBorrowing: borrowingsHook.editBorrowing,
     addRepayment: borrowingsHook.addRepayment,
     deleteBorrowing: borrowingsHook.deleteBorrowing,
+    closeBorrowing: borrowingsHook.closeBorrowing,
+    closeAllZeroBalanceBorrowings: borrowingsHook.closeAllZeroBalanceBorrowings,
     getBorrowingStatus: borrowingsHook.getBorrowingStatus,
 
     // Insurance

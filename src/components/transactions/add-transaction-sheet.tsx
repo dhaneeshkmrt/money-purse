@@ -20,6 +20,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -96,6 +98,7 @@ export default function AddTransactionSheet({
   const formatCurrency = useCurrencyFormatter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dateTransactionsOpen, setDateTransactionsOpen] = useState(false);
+  const [duplicatesDialogOpen, setDuplicatesDialogOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<{id: string; description: string; amount: number} | null>(null);
   const [editingDateTxId, setEditingDateTxId] = useState<string | null>(null);
 
@@ -490,9 +493,20 @@ export default function AddTransactionSheet({
                         <div className="text-xs text-muted-foreground pt-1">Negative amounts are allowed for refunds, credits, or reversals.</div>
                         {duplicateMatches.length > 0 && (
                           <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5">
-                            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
-                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                              {duplicateMatches.length} existing transaction{duplicateMatches.length !== 1 ? 's' : ''} matching amount or description
+                            <div className="flex items-center justify-between text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5 gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">{duplicateMatches.length} existing transaction{duplicateMatches.length !== 1 ? 's' : ''} matching amount or description</span>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDuplicatesDialogOpen(true)}
+                                className="h-5 px-1.5 text-[11px] text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 cursor-pointer font-medium shrink-0"
+                              >
+                                View all
+                              </Button>
                             </div>
                             <div className="space-y-1.5">
                               {duplicateMatches.slice(0, 5).map(t => (
@@ -517,7 +531,13 @@ export default function AddTransactionSheet({
                                 </div>
                               ))}
                               {duplicateMatches.length > 5 && (
-                                <div className="text-xs text-muted-foreground">...and {duplicateMatches.length - 5} more</div>
+                                <button
+                                  type="button"
+                                  onClick={() => setDuplicatesDialogOpen(true)}
+                                  className="text-xs text-primary hover:text-primary/80 font-medium hover:underline cursor-pointer flex items-center gap-1 pt-1 text-left"
+                                >
+                                  ...and {duplicateMatches.length - 5} more (click to view all)
+                                </button>
                               )}
                             </div>
                           </div>
@@ -696,6 +716,86 @@ export default function AddTransactionSheet({
           </Form>
         </SheetContent>
       </Sheet>
+
+      <Dialog open={duplicatesDialogOpen} onOpenChange={setDuplicatesDialogOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-xl md:max-w-2xl max-h-[85vh] flex flex-col p-4 sm:p-6 overflow-hidden">
+          <DialogHeader className="shrink-0 pb-2 border-b">
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
+              Existing Matching Transactions ({duplicateMatches.length})
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
+              Transactions with amount matching {Number.isFinite(watchedAmount) ? formatCurrency(watchedAmount) : ''} or found within the description.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto max-h-[60vh] pr-1 space-y-2.5 py-2">
+            {duplicateMatches.map((t) => (
+              <div
+                key={t.id}
+                className="p-3 rounded-lg border border-border/60 bg-card hover:bg-accent/30 transition-colors space-y-1.5"
+              >
+                {/* Top Row: Description & Amount */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground leading-snug break-words">
+                      {t.description}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {t.category}{t.subcategory ? ` › ${t.subcategory}` : ''}{t.microcategory ? ` › ${t.microcategory}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-bold text-foreground">
+                      {formatCurrency(t.amount)}
+                    </div>
+                    {t.paidBy && (
+                      <Badge variant="outline" className="font-mono text-[10px] uppercase px-1.5 py-0.5 mt-0.5">
+                        {t.paidBy}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bottom Row: Match Type Badge & Date */}
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {t.isAmountMatch && t.isDescMatch ? (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-medium">
+                        Exact Amount & In Description
+                      </span>
+                    ) : t.isAmountMatch ? (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 font-medium">
+                        Same Amount ({formatCurrency(t.amount)})
+                      </span>
+                    ) : (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-medium">
+                        In Description (Group Total)
+                      </span>
+                    )}
+
+                    {t.notes && (
+                      <span className="text-[11px] text-muted-foreground italic truncate max-w-[200px]">
+                        Note: {t.notes}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="shrink-0 font-medium">
+                    {t.date} {t.time ? `at ${t.time}` : ''}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="pt-2 border-t shrink-0">
+            <Button type="button" variant="outline" size="sm" onClick={() => setDuplicatesDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dateTransactionsOpen} onOpenChange={setDateTransactionsOpen}>
         <DialogContent className="w-[95vw] sm:max-w-xl md:max-w-2xl lg:max-w-3xl max-h-[90vh] flex flex-col p-4 sm:p-6 overflow-hidden">

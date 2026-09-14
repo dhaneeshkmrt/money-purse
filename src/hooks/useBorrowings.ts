@@ -250,6 +250,58 @@ export function useBorrowings(tenantId: string | null, user: User | null) {
     await logChange(tenantId, user.name, 'DELETE', 'borrowings', id, `Deleted borrowing record: ${borrowing?.notes || borrowing?.contactName || id}`);
   };
 
+  // Action: Archive / Close Borrowing
+  const closeBorrowing = async (id: string, isClosed: boolean = true) => {
+    if (!tenantId || !user) return;
+    const borrowingRef = doc(db, 'borrowings', id);
+    const borrowing = borrowings.find(b => b.id === id);
+    if (!borrowing) return;
+
+    if (isClosed && borrowing.balance > 0) {
+      throw new Error("Only borrowings with zero balance can be archived or closed.");
+    }
+
+    const updateData = {
+      isClosed,
+      closedAt: isClosed ? (borrowing.closedAt || new Date().toISOString()) : null,
+    };
+
+    await setDoc(borrowingRef, updateData, { merge: true });
+    await logChange(
+      tenantId,
+      user.name,
+      'UPDATE',
+      'borrowings',
+      id,
+      `${isClosed ? 'Archived/Closed' : 'Reopened'} borrowing for ${borrowing.contactName}`,
+      borrowing,
+      { ...borrowing, ...updateData }
+    );
+  };
+
+  // Action: Bulk Archive All Zero Balance Borrowings
+  const closeAllZeroBalanceBorrowings = async () => {
+    if (!tenantId || !user) return;
+    const zeroBalanceBorrowings = borrowings.filter(b => b.balance <= 0 && !b.isClosed);
+    if (zeroBalanceBorrowings.length === 0) return;
+
+    const batch = writeBatch(db);
+    const now = new Date().toISOString();
+    for (const b of zeroBalanceBorrowings) {
+      const ref = doc(db, 'borrowings', b.id);
+      batch.set(ref, { isClosed: true, closedAt: b.closedAt || now }, { merge: true });
+    }
+    await batch.commit();
+    await logChange(
+      tenantId,
+      user.name,
+      'UPDATE',
+      'borrowings',
+      'bulk',
+      `Archived/Closed ${zeroBalanceBorrowings.length} zero-balance borrowing(s)`
+    );
+  };
+
   return {
     contacts,
     borrowings,
@@ -262,6 +314,8 @@ export function useBorrowings(tenantId: string | null, user: User | null) {
     editBorrowing,
     addRepayment,
     deleteBorrowing,
+    closeBorrowing,
+    closeAllZeroBalanceBorrowings,
     getBorrowingStatus
   };
 }
