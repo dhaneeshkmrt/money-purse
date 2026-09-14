@@ -54,6 +54,7 @@ export function useTransactions(tenantId: string | null, user: User | null) {
     const q = query(collection(db, "transactions"), where("tenantId", "==", tenantId));
     const unsubscribe = onSnapshot(
       q,
+      { includeMetadataChanges: true },
       (snapshot) => {
         const fetchedTransactions = snapshot.docs.map(doc => normalizeTransaction({ id: doc.id, ...doc.data() }));
         setTransactions(sortTransactions(fetchedTransactions));

@@ -188,7 +188,7 @@ export function useCategories(tenantId: string | null, user: User | null, select
     const q = query(collection(db, 'categories'), where("tenantId", "==", tenantId));
     const budgetDocRef = doc(db, 'budgets', tenantId);
 
-    const unsubCategories = onSnapshot(q, async (snapshot) => {
+    const unsubCategories = onSnapshot(q, { includeMetadataChanges: true }, async (snapshot) => {
       categoriesFromCacheRef.current = snapshot.metadata.fromCache;
       categoriesLoaded = true;
 
@@ -230,11 +230,12 @@ export function useCategories(tenantId: string | null, user: User | null, select
       checkReadyAndSet();
     }, (error) => {
       console.error("Error listening to categories:", error);
+      categoriesFromCacheRef.current = false;
       setLoadingCategories(false);
       setIsSyncingCategories(false);
     });
 
-    const unsubBudgets = onSnapshot(budgetDocRef, (docSnap) => {
+    const unsubBudgets = onSnapshot(budgetDocRef, { includeMetadataChanges: true }, (docSnap) => {
       budgetsFromCacheRef.current = docSnap.metadata.fromCache;
       budgetsLoaded = true;
 
@@ -246,6 +247,7 @@ export function useCategories(tenantId: string | null, user: User | null, select
       checkReadyAndSet();
     }, (error) => {
       console.error("Error listening to budgets:", error);
+      budgetsFromCacheRef.current = false;
       budgetsLoaded = true;
       checkReadyAndSet();
     });

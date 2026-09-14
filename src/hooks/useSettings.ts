@@ -65,7 +65,7 @@ export function useSettings(tenantId: string | null, user: User | null) {
     const docId = `${tenantId}_${user.name}`;
     const settingsRef = doc(db, 'settings', docId);
 
-    const unsubscribe = onSnapshot(settingsRef, async (docSnap) => {
+    const unsubscribe = onSnapshot(settingsRef, { includeMetadataChanges: true }, async (docSnap) => {
       setIsSyncingSettings(docSnap.metadata.fromCache);
       setLoadingSettings(false);
 

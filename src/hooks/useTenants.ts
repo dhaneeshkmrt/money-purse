@@ -80,7 +80,7 @@ export function useTenants(
         const tenantsCollection = collection(db, "tenants");
         const q = query(tenantsCollection, orderBy("name"));
         
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, (querySnapshot) => {
             const fetchedTenants = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tenant));
             setTenants(fetchedTenants);
             setLoadingTenants(false);

@@ -86,7 +86,7 @@ export function CategoryBreakdown({ transactions }: { transactions: Transaction[
     };
     
     return (
-        <Card className="flex flex-col">
+        <Card className="flex flex-col w-full min-w-0">
             <CardHeader>
                 <CardTitle>Transaction Breakdown</CardTitle>
                 <CardDescription>Filter and sort transactions from the selected period.</CardDescription>
@@ -164,31 +164,31 @@ export function CategoryBreakdown({ transactions }: { transactions: Transaction[
                     ))}
                 </div>
             </CardHeader>
-            <CardContent className="flex-grow flex flex-col">
+            <CardContent className="flex-grow flex flex-col min-w-0">
                 <div className="border-t pt-4">
                     <p className="text-2xl font-bold text-center mb-4">
                         Total: {formatCurrency(totalAmount)}
                     </p>
                 </div>
-                <div className="flex-grow">
+                <div className="flex-grow min-w-0">
                     <div className="space-y-4">
                         {filteredAndSortedTransactions.length > 0 ? filteredAndSortedTransactions.map((transaction) => (
-                            <div key={transaction.id} className="flex items-center">
-                                <Avatar className="h-9 w-9">
+                            <div key={transaction.id} className="flex items-start sm:items-center justify-between gap-3 min-w-0">
+                                <Avatar className="h-9 w-9 shrink-0 mt-0.5 sm:mt-0">
                                     <AvatarFallback className="bg-secondary text-secondary-foreground">
                                     {getCategoryIcon(transaction.category)}
                                     </AvatarFallback>
                                 </Avatar>
-                                <div className="ml-4 space-y-1">
-                                    <p className="text-sm font-medium leading-none">{transaction.description}</p>
+                                <div className="space-y-1 min-w-0 flex-1">
+                                    <p className="text-sm font-medium leading-snug break-words">{transaction.description}</p>
                                     <p className="text-sm text-muted-foreground">{format(parseISO(transaction.date), 'dd MMM yyyy')}</p>
                                 </div>
-                                <div className="ml-auto font-medium text-right">
+                                <div className="font-medium text-right shrink-0">
                                     <div className="flex items-center justify-end gap-2">
                                     <span>{formatCurrency(transaction.amount)}</span>
                                     <Badge variant="outline" className="font-mono">{transaction.paidBy.toUpperCase()}</Badge>
                                     </div>
-                                    <p className="text-xs text-muted-foreground">{transaction.category}{transaction.subcategory ? ` / ${transaction.subcategory}` : ''}{transaction.microcategory ? ` / ${transaction.microcategory}` : ''}</p>
+                                    <p className="text-xs text-muted-foreground max-w-[130px] sm:max-w-none truncate sm:whitespace-normal">{transaction.category}{transaction.subcategory ? ` / ${transaction.subcategory}` : ''}{transaction.microcategory ? ` / ${transaction.microcategory}` : ''}</p>
                                 </div>
                             </div>
                         )) : (

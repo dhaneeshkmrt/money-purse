@@ -112,24 +112,24 @@ export default function SubcategoryTransactionsDialog({
           <div className="space-y-4 py-4">
             {sortedTransactions.length > 0 ? (
               sortedTransactions.map((transaction) => (
-                <div key={transaction.id} className="flex items-center">
-                  <Avatar className="h-9 w-9">
+                <div key={transaction.id} className="flex items-start sm:items-center justify-between gap-3 min-w-0">
+                  <Avatar className="h-9 w-9 shrink-0 mt-0.5 sm:mt-0">
                     <AvatarFallback className="bg-secondary text-secondary-foreground">
                       {getCategoryIcon(transaction.category)}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="ml-4 space-y-1">
-                    <p className="text-sm font-medium leading-none">{transaction.description}</p>
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <p className="text-sm font-medium leading-snug break-words">{transaction.description}</p>
                     <p className="text-sm text-muted-foreground">
                       {format(parseISO(transaction.date), 'PPP')}
                     </p>
                   </div>
-                  <div className="ml-auto font-medium text-right">
+                  <div className="font-medium text-right shrink-0">
                     <div className="flex items-center justify-end gap-2">
                       <span>{formatCurrency(transaction.amount)}</span>
                       <Badge variant="outline" className="font-mono">{transaction.paidBy.toUpperCase()}</Badge>
                     </div>
-                    {transaction.microcategory && <p className="text-xs text-muted-foreground">{transaction.microcategory}</p>}
+                    {transaction.microcategory && <p className="text-xs text-muted-foreground max-w-[130px] sm:max-w-none truncate sm:whitespace-normal">{transaction.microcategory}</p>}
                   </div>
                 </div>
               ))

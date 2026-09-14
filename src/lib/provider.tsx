@@ -756,12 +756,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return false;
   }, [getCurrentMonthExportData]);
 
-  const isSyncing = Boolean(
+  const rawIsSyncing = Boolean(
     tenantHook.isSyncingTenants ||
     categoriesHook.isSyncingCategories ||
     transactionsHook.isSyncingTransactions ||
     settingsHook.isSyncingSettings
   );
+
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    if (rawIsSyncing) {
+      setIsSyncing(true);
+      const timer = setTimeout(() => {
+        setIsSyncing(false);
+      }, 4000); // Safety timeout: auto-clear sync loader after 4s
+      return () => clearTimeout(timer);
+    } else {
+      setIsSyncing(false);
+    }
+  }, [rawIsSyncing]);
 
   const loading = loadingAuth || 
     (tenantHook.loadingTenants && tenantHook.tenants.length === 0) || 
