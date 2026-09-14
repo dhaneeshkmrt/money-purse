@@ -3,7 +3,7 @@
 
 import { AppShell } from '@/components/app-shell';
 import { useApp } from '@/lib/provider';
-import { redirect } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 // This layout will apply to all pages that need authentication
@@ -13,12 +13,13 @@ export default function AppLayout({
   children: React.ReactNode;
 }>) {
   const { user, loadingAuth } = useApp();
+  const router = useRouter();
 
   useEffect(() => {
     if (!loadingAuth && !user) {
-      redirect('/login');
+      router.replace('/login');
     }
-  }, [user, loadingAuth]);
+  }, [user, loadingAuth, router]);
 
   if (loadingAuth || !user) {
     // You can add a loading spinner here

@@ -22,43 +22,9 @@ export function useTenants(
     seedDefaultSettings: (tenantId: string, userId?: string) => Promise<any>,
     user: User | null
 ) {
-    const [tenants, setTenants] = useState<Tenant[]>(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const storedAuth = localStorage.getItem('expenseflow_auth');
-                if (storedAuth) {
-                    const authData = JSON.parse(storedAuth);
-                    if (authData.tenant) return [authData.tenant];
-                }
-            } catch (e) {}
-        }
-        return [];
-    });
-    const [loadingTenants, setLoadingTenants] = useState<boolean>(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const storedAuth = localStorage.getItem('expenseflow_auth');
-                if (storedAuth) {
-                    const authData = JSON.parse(storedAuth);
-                    if (authData.tenant) return false;
-                }
-            } catch (e) {}
-        }
-        return true;
-    });
-    const [selectedTenantId, setSelectedTenantId] = useState<string | null>(() => {
-        if (user?.tenantId) return user.tenantId;
-        if (typeof window !== 'undefined') {
-            try {
-                const storedAuth = localStorage.getItem('expenseflow_auth');
-                if (storedAuth) {
-                    const authData = JSON.parse(storedAuth);
-                    if (authData.user?.tenantId) return authData.user.tenantId;
-                }
-            } catch (e) {}
-        }
-        return null;
-    });
+    const [tenants, setTenants] = useState<Tenant[]>([]);
+    const [loadingTenants, setLoadingTenants] = useState<boolean>(true);
+    const [selectedTenantId, setSelectedTenantId] = useState<string | null>(() => user?.tenantId || null);
     const [isSyncingTenants, setIsSyncingTenants] = useState<boolean>(false);
 
     const userTenant = useMemo(() => {
@@ -75,6 +41,22 @@ export function useTenants(
         if (!userTenant || !user) return false;
         return user.name === userTenant.name;
     }, [user, userTenant]);
+
+    useEffect(() => {
+        try {
+            const storedAuth = localStorage.getItem('expenseflow_auth');
+            if (storedAuth) {
+                const authData = JSON.parse(storedAuth);
+                if (authData.tenant) {
+                    setTenants(prev => prev.length === 0 ? [authData.tenant] : prev);
+                    setLoadingTenants(false);
+                }
+                if (authData.user?.tenantId) {
+                    setSelectedTenantId(prev => prev || authData.user.tenantId);
+                }
+            }
+        } catch (e) {}
+    }, []);
 
     useEffect(() => {
         const tenantsCollection = collection(db, "tenants");

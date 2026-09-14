@@ -10,32 +10,24 @@ import { logChange } from '@/lib/logger';
 const SETTINGS_STORAGE_KEY = 'expenseflow_settings';
 
 export function useSettings(tenantId: string | null, user: User | null) {
-  const [settings, setSettings] = useState<Settings>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        if (cached) {
-          return JSON.parse(cached);
-        }
-      } catch (e) {}
-    }
-    return { 
-      ...defaultSettings, 
-      tenantId: tenantId || '', 
-      userId: user?.name || '',
-      dateInputStyle: 'popup'
-    };
+  const [settings, setSettings] = useState<Settings>({ 
+    ...defaultSettings, 
+    tenantId: tenantId || '', 
+    userId: user?.name || '',
+    dateInputStyle: 'popup'
   });
-  const [loadingSettings, setLoadingSettings] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        if (cached) return false;
-      } catch (e) {}
-    }
-    return true;
-  });
+  const [loadingSettings, setLoadingSettings] = useState<boolean>(true);
   const [isSyncingSettings, setIsSyncingSettings] = useState<boolean>(false);
+
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (cached) {
+        setSettings(JSON.parse(cached));
+        setLoadingSettings(false);
+      }
+    } catch (e) {}
+  }, []);
 
   const seedDefaultSettings = useCallback(async (tenantIdToSeed: string, userIdToSeed: string = 'default') => {
     const docId = `${tenantIdToSeed}_${userIdToSeed}`;

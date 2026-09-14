@@ -200,6 +200,209 @@ interface SplitItem {
   notes: string;
 }
 
+interface QueuedBill {
+  id: string;
+  file: File;
+  fileName: string;
+  fileType: 'image' | 'pdf';
+  previewUri?: string;
+  status: 'pending' | 'processing' | 'ready' | 'error' | 'saved';
+  errorMessage?: string;
+  totalAmountInput: string;
+  totalAmount: number;
+  totalExpression: string | null;
+  groupDescription: string;
+  groupDate: Date;
+  groupTime: string;
+  paidBy: string;
+  groupNotes: string;
+  items: SplitItem[];
+}
+
+interface ParsedReceipt {
+  groupDescription: string;
+  groupDate: Date;
+  totalAmount: number;
+  totalAmountInput: string;
+  groupNotes: string;
+  items: SplitItem[];
+}
+
+function parseAiReceiptResult(
+  result: any,
+  fileName: string,
+  categories: Category[]
+): ParsedReceipt {
+  let groupDescription = '';
+  let groupDate = new Date();
+  let totalAmount = 0;
+  let totalAmountInput = '';
+  let groupNotes = '';
+
+  if (result?.storeName) {
+    groupDescription = result.storeName;
+  }
+
+  if (result?.date) {
+    try {
+      const parsedDate = parseISO(result.date);
+      if (!isNaN(parsedDate.getTime())) {
+        groupDate = parsedDate;
+      }
+    } catch {
+      // ignore invalid date
+    }
+  }
+
+  if (typeof result?.totalAmount === 'number' && result.totalAmount > 0) {
+    totalAmount = result.totalAmount;
+    totalAmountInput = String(result.totalAmount);
+  }
+
+  if (result?.notes) {
+    groupNotes = result.notes;
+  }
+
+  const parsedItems: SplitItem[] = [];
+
+  if (result?.items && Array.isArray(result.items) && result.items.length > 0) {
+    const matchedLineItems = result.items.map((aiItem: any) => {
+      let matchedCatName = '';
+      let matchedSubName = '';
+      let matchedMicroName = '';
+
+      const matchedCat = categories.find(c =>
+        aiItem.category && c.name.trim().toLowerCase() === aiItem.category.trim().toLowerCase()
+      ) || categories.find(c =>
+        aiItem.category && c.name.toLowerCase().includes(aiItem.category.toLowerCase())
+      ) || categories[0];
+
+      if (matchedCat) {
+        matchedCatName = matchedCat.name;
+        const subcategories = matchedCat.subcategories || [];
+
+        const matchedSub = subcategories.find(s =>
+          aiItem.subcategory && s.name.trim().toLowerCase() === aiItem.subcategory.trim().toLowerCase()
+        ) || subcategories.find(s =>
+          aiItem.subcategory && s.name.toLowerCase().includes(aiItem.subcategory.toLowerCase())
+        ) || subcategories[0];
+
+        if (matchedSub) {
+          matchedSubName = matchedSub.name;
+          const microcategories = matchedSub.microcategories || [];
+
+          const matchedMicro = microcategories.find(m =>
+            aiItem.microcategory && m.name.trim().toLowerCase() === aiItem.microcategory.trim().toLowerCase()
+          );
+          if (matchedMicro) {
+            matchedMicroName = matchedMicro.name;
+          }
+        }
+      }
+
+      const itemAmount = typeof aiItem.amount === 'number' ? aiItem.amount : parseFloat(String(aiItem.amount)) || 0;
+
+      return {
+        description: aiItem.description?.trim() || '',
+        amount: itemAmount,
+        category: matchedCatName,
+        subcategory: matchedSubName,
+        microcategory: matchedMicroName,
+        quantity: aiItem.quantity,
+        notes: aiItem.notes,
+      };
+    });
+
+    const categoryGroups = new Map<string, {
+      category: string;
+      subcategory: string;
+      microcategory: string;
+      amounts: number[];
+      descriptions: string[];
+      notes: string[];
+    }>();
+
+    for (const item of matchedLineItems) {
+      const groupKey = `${item.category}||${item.subcategory}||${item.microcategory || ''}`;
+      const existing = categoryGroups.get(groupKey);
+      const desc = item.description;
+      const note = [item.quantity ? `Qty: ${item.quantity}` : null, item.notes?.trim() || null].filter(Boolean).join(' ');
+
+      if (existing) {
+        existing.amounts.push(item.amount);
+        if (desc && !existing.descriptions.includes(desc)) {
+          existing.descriptions.push(desc);
+        }
+        if (note && !existing.notes.includes(note)) {
+          existing.notes.push(note);
+        }
+      } else {
+        categoryGroups.set(groupKey, {
+          category: item.category,
+          subcategory: item.subcategory,
+          microcategory: item.microcategory || '',
+          amounts: [item.amount],
+          descriptions: desc ? [desc] : [],
+          notes: note ? [note] : [],
+        });
+      }
+    }
+
+    let groupIndex = 0;
+    categoryGroups.forEach((group) => {
+      groupIndex++;
+      const isMultiple = group.amounts.length > 1;
+      const totalGroupAmount = Math.round(group.amounts.reduce((sum, a) => sum + a, 0) * 100) / 100;
+      const expressionString = isMultiple
+        ? group.amounts.map(a => Number.isInteger(a) ? a.toString() : String(a)).join('+')
+        : null;
+      const rawAmountString = isMultiple ? expressionString! : String(totalGroupAmount);
+      const combinedDesc = group.descriptions.length > 0
+        ? group.descriptions.join(', ')
+        : (group.microcategory || group.subcategory || group.category);
+
+      parsedItems.push({
+        id: `item-${Date.now()}-${groupIndex}-${Math.random().toString(36).substr(2, 4)}`,
+        rawAmount: rawAmountString,
+        evaluatedAmount: totalGroupAmount,
+        expression: expressionString,
+        description: combinedDesc,
+        category: group.category,
+        subcategory: group.subcategory,
+        microcategory: group.microcategory,
+        notes: group.notes.join(' | '),
+      });
+    });
+
+    if (totalAmount <= 0 && parsedItems.length > 0) {
+      const calculatedTotal = parsedItems.reduce((sum, item) => sum + item.evaluatedAmount, 0);
+      totalAmount = calculatedTotal;
+      totalAmountInput = String(calculatedTotal);
+    }
+  }
+
+  return {
+    groupDescription,
+    groupDate,
+    totalAmount,
+    totalAmountInput,
+    groupNotes,
+    items: parsedItems.length > 0 ? parsedItems : [
+      {
+        id: `item-${Date.now()}`,
+        rawAmount: '',
+        evaluatedAmount: 0,
+        expression: null,
+        description: '',
+        category: '',
+        subcategory: '',
+        microcategory: '',
+        notes: '',
+      }
+    ],
+  };
+}
+
 export default function GroupTransactionsPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -291,222 +494,286 @@ export default function GroupTransactionsPage() {
     }));
   }, [categories]);
 
-  // Handle Receipt Image or PDF Upload / Camera Capture
-  const handleReceiptFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Batch Queue States
+  const [queuedBills, setQueuedBills] = useState<QueuedBill[]>([]);
+  const [activeBillId, setActiveBillId] = useState<string | null>(null);
+  const [processingTick, setProcessingTick] = useState(0);
+  const activeBillIdRef = useRef<string | null>(null);
+  activeBillIdRef.current = activeBillId;
+  const isProcessingRef = useRef(false);
+
+  // Sync active form state to queued draft
+  const syncCurrentFormToDraft = useCallback((draftId: string) => {
+    setQueuedBills(prev => prev.map(bill => {
+      if (bill.id !== draftId) return bill;
+      return {
+        ...bill,
+        totalAmountInput,
+        totalAmount,
+        totalExpression,
+        groupDescription,
+        groupDate,
+        groupTime,
+        paidBy,
+        groupNotes,
+        items,
+        previewUri: receiptDocPreview || bill.previewUri,
+        fileType: receiptDocType || bill.fileType,
+        fileName: receiptDocName || bill.fileName,
+      };
+    }));
+  }, [totalAmountInput, totalAmount, totalExpression, groupDescription, groupDate, groupTime, paidBy, groupNotes, items, receiptDocPreview, receiptDocType, receiptDocName]);
+
+  // Load a queued bill into active form fields
+  const loadBillIntoForm = useCallback((bill: QueuedBill) => {
+    setTotalAmountInput(bill.totalAmountInput || '');
+    setTotalAmount(bill.totalAmount || 0);
+    setTotalExpression(bill.totalExpression || null);
+    setGroupDescription(bill.groupDescription || '');
+    setGroupDate(bill.groupDate || new Date());
+    setGroupTime(bill.groupTime || format(new Date(), 'HH:mm'));
+    setPaidBy(bill.paidBy || paidByOptions[0] || '');
+    setGroupNotes(bill.groupNotes || '');
+    setItems(bill.items && bill.items.length > 0 ? bill.items : [
+      {
+        id: `item-${Date.now()}`,
+        rawAmount: '',
+        evaluatedAmount: 0,
+        expression: null,
+        description: '',
+        category: '',
+        subcategory: '',
+        microcategory: '',
+        notes: '',
+      }
+    ]);
+    setReceiptDocPreview(bill.previewUri || null);
+    setReceiptDocType(bill.fileType || null);
+    setReceiptDocName(bill.fileName || '');
+  }, [paidByOptions]);
+
+  // Switch between bills in the queue
+  const switchActiveBill = useCallback((targetBillId: string) => {
+    if (targetBillId === activeBillId) return;
+    if (activeBillId) {
+      syncCurrentFormToDraft(activeBillId);
+    }
+    const target = queuedBills.find(b => b.id === targetBillId);
+    if (target) {
+      setActiveBillId(targetBillId);
+      loadBillIntoForm(target);
+    }
+  }, [activeBillId, queuedBills, syncCurrentFormToDraft, loadBillIntoForm]);
+
+  // Remove a bill from the queue
+  const removeBillFromQueue = useCallback((billId: string) => {
+    setQueuedBills(prev => {
+      const remaining = prev.filter(b => b.id !== billId);
+      if (activeBillId === billId) {
+        const nextBill = remaining.find(b => b.status !== 'saved') || remaining[0];
+        if (nextBill) {
+          setActiveBillId(nextBill.id);
+          loadBillIntoForm(nextBill);
+        } else {
+          setActiveBillId(null);
+          resetForm();
+        }
+      }
+      return remaining;
+    });
+  }, [activeBillId, loadBillIntoForm]);
+
+  // Retry a failed bill
+  const retryBill = useCallback((billId: string) => {
+    setQueuedBills(prev => prev.map(b => b.id === billId ? { ...b, status: 'pending', errorMessage: undefined } : b));
+    setProcessingTick(t => t + 1);
+  }, []);
+
+  // Handle files selected (supports multiple files from single pick)
+  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    const file = files[0];
 
-    setIsScanningReceipt(true);
-    try {
+    const fileList = Array.from(files);
+    // Reset file input value so same files can be reselected if needed
+    e.target.value = '';
+
+    const newBills: QueuedBill[] = fileList.map((file, i) => {
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      let dataUri = '';
+      return {
+        id: `bill-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
+        file,
+        fileName: file.name,
+        fileType: isPdf ? 'pdf' : 'image',
+        status: 'pending',
+        totalAmountInput: '',
+        totalAmount: 0,
+        totalExpression: null,
+        groupDescription: '',
+        groupDate: new Date(),
+        groupTime: format(new Date(), 'HH:mm'),
+        paidBy: paidBy || paidByOptions[0] || '',
+        groupNotes: '',
+        items: [
+          {
+            id: `item-${Date.now()}-${i}`,
+            rawAmount: '',
+            evaluatedAmount: 0,
+            expression: null,
+            description: '',
+            category: '',
+            subcategory: '',
+            microcategory: '',
+            notes: '',
+          },
+        ],
+      };
+    });
 
-      if (isPdf) {
-        dataUri = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(new Error('Failed to read PDF document.'));
-          reader.readAsDataURL(file);
-        });
-        setReceiptDocType('pdf');
-      } else {
-        // Client-side image compression
-        dataUri = await compressImage(file);
-        setReceiptDocType('image');
+    // Save current active draft if exists and not yet saved
+    if (activeBillId) {
+      syncCurrentFormToDraft(activeBillId);
+    }
+
+    setQueuedBills(prev => {
+      const updated = [...prev, ...newBills];
+      // If no active bill or previous active was saved, activate the first new bill
+      if (!activeBillId || prev.find(b => b.id === activeBillId)?.status === 'saved') {
+        setActiveBillId(newBills[0].id);
+        loadBillIntoForm(newBills[0]);
       }
+      return updated;
+    });
 
-      setReceiptDocName(file.name);
-      setReceiptDocPreview(dataUri);
+    setProcessingTick(t => t + 1);
+  };
 
-      // 2. Call Gemini AI Flow with chosen model
-      const result = await processReceiptTransaction({
-        imageDataUri: dataUri,
-        availableCategories: categories.map(c => c.name),
-        categoryDetails,
-        model: selectedAiModel,
-      });
+  // Background queue processing effect: processes pending bills one by one
+  useEffect(() => {
+    if (isProcessingRef.current) return;
+    const pendingBill = queuedBills.find(b => b.status === 'pending');
+    if (!pendingBill) {
+      setIsScanningReceipt(false);
+      return;
+    }
 
-      if (result) {
-        // Auto-fill Store / Merchant
-        if (result.storeName) {
-          setGroupDescription(result.storeName);
-        }
+    const processBill = async (bill: QueuedBill) => {
+      isProcessingRef.current = true;
+      setIsScanningReceipt(true);
+      setQueuedBills(prev => prev.map(b => b.id === bill.id ? { ...b, status: 'processing' } : b));
 
-        // Auto-fill Date if detected
-        if (result.date) {
-          try {
-            const parsedDate = parseISO(result.date);
-            if (!isNaN(parsedDate.getTime())) {
-              setGroupDate(parsedDate);
-            }
-          } catch {
-            // Ignore invalid date
-          }
-        }
-
-        // Auto-fill Total Amount
-        if (typeof result.totalAmount === 'number' && result.totalAmount > 0) {
-          setTotalAmount(result.totalAmount);
-          setTotalAmountInput(String(result.totalAmount));
-          setTotalExpression(null);
-        }
-
-        // Auto-fill Notes / Extra
-        if (result.notes) {
-          setGroupNotes(result.notes);
-        }
-
-        // Auto-fill and map Split Items with Category / Subcategory / Microcategory matching & Grouping
-        if (result.items && result.items.length > 0) {
-          // 1. First, match each individual line item to categories
-          const matchedLineItems = result.items.map((aiItem) => {
-            let matchedCatName = '';
-            let matchedSubName = '';
-            let matchedMicroName = '';
-
-            const matchedCat = categories.find(c =>
-              aiItem.category && c.name.trim().toLowerCase() === aiItem.category.trim().toLowerCase()
-            ) || categories.find(c =>
-              aiItem.category && c.name.toLowerCase().includes(aiItem.category.toLowerCase())
-            ) || categories[0];
-
-            if (matchedCat) {
-              matchedCatName = matchedCat.name;
-              const subcategories = matchedCat.subcategories || [];
-
-              const matchedSub = subcategories.find(s =>
-                aiItem.subcategory && s.name.trim().toLowerCase() === aiItem.subcategory.trim().toLowerCase()
-              ) || subcategories.find(s =>
-                aiItem.subcategory && s.name.toLowerCase().includes(aiItem.subcategory.toLowerCase())
-              ) || subcategories[0];
-
-              if (matchedSub) {
-                matchedSubName = matchedSub.name;
-                const microcategories = matchedSub.microcategories || [];
-
-                const matchedMicro = microcategories.find(m =>
-                  aiItem.microcategory && m.name.trim().toLowerCase() === aiItem.microcategory.trim().toLowerCase()
-                );
-                if (matchedMicro) {
-                  matchedMicroName = matchedMicro.name;
-                }
-              }
-            }
-
-            const itemAmount = typeof aiItem.amount === 'number' ? aiItem.amount : parseFloat(String(aiItem.amount)) || 0;
-
-            return {
-              description: aiItem.description?.trim() || '',
-              amount: itemAmount,
-              category: matchedCatName,
-              subcategory: matchedSubName,
-              microcategory: matchedMicroName,
-              quantity: aiItem.quantity,
-              notes: aiItem.notes,
-            };
-          });
-
-          // 2. Group items that share the same Category, Subcategory, and Microcategory
-          const categoryGroups = new Map<string, {
-            category: string;
-            subcategory: string;
-            microcategory: string;
-            amounts: number[];
-            descriptions: string[];
-            notes: string[];
-          }>();
-
-          for (const item of matchedLineItems) {
-            const groupKey = `${item.category}||${item.subcategory}||${item.microcategory || ''}`;
-            const existing = categoryGroups.get(groupKey);
-            const desc = item.description;
-            const note = [item.quantity ? `Qty: ${item.quantity}` : null, item.notes?.trim() || null].filter(Boolean).join(' ');
-
-            if (existing) {
-              existing.amounts.push(item.amount);
-              if (desc && !existing.descriptions.includes(desc)) {
-                existing.descriptions.push(desc);
-              }
-              if (note && !existing.notes.includes(note)) {
-                existing.notes.push(note);
-              }
-            } else {
-              categoryGroups.set(groupKey, {
-                category: item.category,
-                subcategory: item.subcategory,
-                microcategory: item.microcategory || '',
-                amounts: [item.amount],
-                descriptions: desc ? [desc] : [],
-                notes: note ? [note] : [],
-              });
-            }
-          }
-
-          // 3. Build split items with aggregated arithmetic expressions (e.g. 100+50+240)
-          const parsedItems: SplitItem[] = [];
-          let groupIndex = 0;
-
-          categoryGroups.forEach((group) => {
-            groupIndex++;
-            const isMultiple = group.amounts.length > 1;
-            const totalGroupAmount = Math.round(group.amounts.reduce((sum, a) => sum + a, 0) * 100) / 100;
-            const expressionString = isMultiple
-              ? group.amounts.map(a => Number.isInteger(a) ? a.toString() : String(a)).join('+')
-              : null;
-            const rawAmountString = isMultiple ? expressionString! : String(totalGroupAmount);
-            const combinedDesc = group.descriptions.length > 0
-              ? group.descriptions.join(', ')
-              : (group.microcategory || group.subcategory || group.category);
-
-            parsedItems.push({
-              id: `item-${Date.now()}-${groupIndex}-${Math.random().toString(36).substr(2, 4)}`,
-              rawAmount: rawAmountString,
-              evaluatedAmount: totalGroupAmount,
-              expression: expressionString,
-              description: combinedDesc,
-              category: group.category,
-              subcategory: group.subcategory,
-              microcategory: group.microcategory,
-              notes: group.notes.join(' | '),
-            });
-          });
-
-          setItems(parsedItems);
-
-          // If totalAmount was not explicitly detected on receipt, sum from items
-          if (!result.totalAmount || result.totalAmount <= 0) {
-            const calculatedTotal = parsedItems.reduce((sum, item) => sum + item.evaluatedAmount, 0);
-            setTotalAmount(calculatedTotal);
-            setTotalAmountInput(String(calculatedTotal));
-          }
-
-          toast({
-            title: 'Receipt Scanned & Grouped!',
-            description: `Extracted ${result.items.length} items from ${result.storeName || 'receipt'}, grouped into ${parsedItems.length} category splits.`,
+      try {
+        let dataUri = '';
+        if (bill.fileType === 'pdf') {
+          dataUri = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('Failed to read PDF document.'));
+            reader.readAsDataURL(bill.file);
           });
         } else {
-          toast({
-            title: 'Receipt Processed',
-            description: 'Extracted receipt summary. You can add split items below.',
-          });
+          dataUri = await compressImage(bill.file);
         }
+
+        const result = await processReceiptTransaction({
+          imageDataUri: dataUri,
+          availableCategories: categories.map(c => c.name),
+          categoryDetails,
+          model: selectedAiModel,
+        });
+
+        const parsed = parseAiReceiptResult(result, bill.fileName, categories);
+
+        // Update in queue
+        setQueuedBills(prev => prev.map(b => {
+          if (b.id !== bill.id) return b;
+          return {
+            ...b,
+            previewUri: dataUri,
+            status: 'ready',
+            groupDescription: parsed.groupDescription,
+            groupDate: parsed.groupDate,
+            totalAmountInput: parsed.totalAmountInput,
+            totalAmount: parsed.totalAmount,
+            totalExpression: null,
+            groupNotes: parsed.groupNotes,
+            items: parsed.items,
+          };
+        }));
+
+        // If this bill is active on screen right now, update form state
+        if (activeBillIdRef.current === bill.id) {
+          setReceiptDocPreview(dataUri);
+          setReceiptDocType(bill.fileType);
+          setReceiptDocName(bill.fileName);
+          setGroupDescription(parsed.groupDescription);
+          setGroupDate(parsed.groupDate);
+          setTotalAmount(parsed.totalAmount);
+          setTotalAmountInput(parsed.totalAmountInput);
+          setTotalExpression(null);
+          setGroupNotes(parsed.groupNotes);
+          setItems(parsed.items);
+        }
+
+        toast({
+          title: `Bill Scanned: ${parsed.groupDescription || bill.fileName}`,
+          description: `Extracted ${parsed.items.length} items totaling ${formatCurrency(parsed.totalAmount)}.`,
+        });
+      } catch (err: any) {
+        console.error('Receipt scan error:', err);
+        setQueuedBills(prev => prev.map(b => b.id === bill.id ? {
+          ...b,
+          status: 'error',
+          errorMessage: err?.message || 'Failed to analyze bill.',
+        } : b));
+
+        toast({
+          title: `Scan Failed: ${bill.fileName}`,
+          description: err?.message || 'Could not analyze document. You can still enter details manually.',
+          variant: 'destructive',
+        });
+      } finally {
+        isProcessingRef.current = false;
+        setProcessingTick(t => t + 1);
       }
-    } catch (err: any) {
-      console.error('Receipt scan failed:', err);
-      toast({
-        title: 'Receipt Scan Failed',
-        description: err.message || 'Could not analyze receipt. Please try with a clearer, brighter photo.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsScanningReceipt(false);
-      // Reset input values so same file can be re-selected if needed
-      if (cameraInputRef.current) cameraInputRef.current.value = '';
-      if (imageInputRef.current) imageInputRef.current.value = '';
-      if (pdfInputRef.current) pdfInputRef.current.value = '';
+    };
+
+    processBill(pendingBill);
+  }, [queuedBills, processingTick, categories, categoryDetails, selectedAiModel, formatCurrency, toast]);
+
+  const activeBillIndex = useMemo(() => {
+    return queuedBills.findIndex(b => b.id === activeBillId);
+  }, [queuedBills, activeBillId]);
+
+  const activeBill = useMemo(() => {
+    return queuedBills.find(b => b.id === activeBillId);
+  }, [queuedBills, activeBillId]);
+
+  const hasMoreUnsavedBills = useMemo(() => {
+    return queuedBills.some(b => b.id !== activeBillId && b.status !== 'saved');
+  }, [queuedBills, activeBillId]);
+
+  const savedCount = useMemo(() => {
+    return queuedBills.filter(b => b.status === 'saved').length;
+  }, [queuedBills]);
+
+  const isCurrentBillProcessing = useMemo(() => {
+    return activeBill?.status === 'processing';
+  }, [activeBill]);
+
+  const goToNextBill = useCallback(() => {
+    if (activeBillId) {
+      syncCurrentFormToDraft(activeBillId);
     }
-  };
+    const otherUnsaved = queuedBills.filter(b => b.id !== activeBillId && b.status !== 'saved');
+    if (otherUnsaved.length > 0) {
+      const currentIndex = queuedBills.findIndex(b => b.id === activeBillId);
+      const nextAfterCurrent = queuedBills.slice(currentIndex + 1).find(b => b.status !== 'saved');
+      const nextBill = nextAfterCurrent || otherUnsaved[0];
+      setActiveBillId(nextBill.id);
+      loadBillIntoForm(nextBill);
+    }
+  }, [activeBillId, queuedBills, syncCurrentFormToDraft, loadBillIntoForm]);
 
   // Handle total amount change with arithmetic calculation
   const handleTotalAmountChange = (val: string) => {
@@ -681,6 +948,13 @@ export default function GroupTransactionsPage() {
     ]);
   };
 
+  // Reset form and entire batch queue
+  const resetAll = () => {
+    resetForm();
+    setQueuedBills([]);
+    setActiveBillId(null);
+  };
+
   // Build final transaction description
   // Requirement: "prefix saying top total amount rs and desc. then current trans and description."
   const buildFinalDescription = useCallback((item: SplitItem): string => {
@@ -784,12 +1058,33 @@ export default function GroupTransactionsPage() {
 
       await addMultipleTransactions(transactionsToCreate);
 
-      toast({
-        title: 'Group Transactions Saved!',
-        description: `Successfully created ${transactionsToCreate.length} transactions totaling ${formatCurrency(totalAllocated)}.`,
-      });
+      // Multi-bill batch queue support
+      if (activeBillId) {
+        setQueuedBills(prev => prev.map(b => b.id === activeBillId ? { ...b, status: 'saved' } : b));
+      }
 
-      router.push('/transactions');
+      const remainingUnsaved = queuedBills.filter(b => b.id !== activeBillId && b.status !== 'saved');
+
+      if (remainingUnsaved.length > 0) {
+        // Find next bill (preferably sequentially after activeBillIndex)
+        const currentIndex = queuedBills.findIndex(b => b.id === activeBillId);
+        const nextAfterCurrent = queuedBills.slice(currentIndex + 1).find(b => b.status !== 'saved');
+        const nextBill = nextAfterCurrent || remainingUnsaved[0];
+
+        toast({
+          title: `Bill Saved: ${groupDescription || receiptDocName || 'Group Transaction'}`,
+          description: `Saved ${transactionsToCreate.length} items (${formatCurrency(totalAllocated)}). Now reviewing next bill.`,
+        });
+
+        setActiveBillId(nextBill.id);
+        loadBillIntoForm(nextBill);
+      } else {
+        toast({
+          title: 'All Group Transactions Saved!',
+          description: `Successfully created ${transactionsToCreate.length} transactions totaling ${formatCurrency(totalAllocated)}.`,
+        });
+        router.push('/transactions');
+      }
     } catch (error: any) {
       console.error('Error saving group transactions:', error);
       toast({
@@ -823,21 +1118,23 @@ export default function GroupTransactionsPage() {
         accept="image/*"
         capture="environment"
         className="hidden"
-        onChange={handleReceiptFile}
+        onChange={handleFilesSelected}
       />
       <input
         type="file"
         ref={imageInputRef}
-        accept="image/*"
+        accept="image/*,.png,.jpg,.jpeg,.webp"
+        multiple
         className="hidden"
-        onChange={handleReceiptFile}
+        onChange={handleFilesSelected}
       />
       <input
         type="file"
         ref={pdfInputRef}
         accept="application/pdf,.pdf"
+        multiple
         className="hidden"
-        onChange={handleReceiptFile}
+        onChange={handleFilesSelected}
       />
 
       {/* Page Header */}
@@ -862,56 +1159,51 @@ export default function GroupTransactionsPage() {
           </div>
         </div>
 
-        {/* Top Action Buttons: AI Receipt Scanner & Reset */}
+        {/* Top Action Buttons: Direct Upload Buttons & Reset */}
         <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-          {/* AI Scan Receipt Menu */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isScanningReceipt}
-                className="border-primary/50 text-foreground hover:bg-accent hover:text-accent-foreground font-semibold text-xs shadow-sm gap-1.5"
-              >
-                {isScanningReceipt ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                    Scanning Bill...
-                  </>
-                ) : (
-                  <>
-                    <Camera className="h-3.5 w-3.5 text-primary" />
-                    Scan Receipt / Bill
-                    <Sparkles className="h-3 w-3 text-amber-500" />
-                  </>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem
-                className="cursor-pointer gap-2 py-2 text-xs"
-                onClick={() => cameraInputRef.current?.click()}
-              >
-                <Camera className="h-4 w-4 text-primary" />
-                <span>Take Photo (Camera)</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer gap-2 py-2 text-xs"
-                onClick={() => imageInputRef.current?.click()}
-              >
-                <Upload className="h-4 w-4 text-primary" />
-                <span>Upload Bill Image (JPG/PNG)</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer gap-2 py-2 text-xs"
-                onClick={() => pdfInputRef.current?.click()}
-              >
-                <FileCode className="h-4 w-4 text-primary" />
-                <span>Upload Bill PDF Document</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Direct Upload Image Button */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isScanningReceipt}
+            onClick={() => imageInputRef.current?.click()}
+            className="border-primary/50 text-foreground hover:bg-accent hover:text-accent-foreground font-semibold text-xs shadow-sm gap-1.5 h-9 cursor-pointer"
+            title="Upload bill images (PNG/JPG/WEBP) - Select multiple files supported"
+          >
+            <Upload className="h-3.5 w-3.5 text-primary" />
+            <span>Upload Image</span>
+            <span className="text-[10px] text-muted-foreground font-mono font-normal">PNG/JPG</span>
+          </Button>
+
+          {/* Direct Upload PDF Button */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isScanningReceipt}
+            onClick={() => pdfInputRef.current?.click()}
+            className="border-primary/50 text-foreground hover:bg-accent hover:text-accent-foreground font-semibold text-xs shadow-sm gap-1.5 h-9 cursor-pointer"
+            title="Upload bill documents (PDF) - Select multiple files supported"
+          >
+            <FileText className="h-3.5 w-3.5 text-primary" />
+            <span>Upload PDF</span>
+            <span className="text-[10px] text-muted-foreground font-mono font-normal">PDF</span>
+          </Button>
+
+          {/* Direct Camera Button */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isScanningReceipt}
+            onClick={() => cameraInputRef.current?.click()}
+            className="text-xs h-9 px-2.5 gap-1.5 text-muted-foreground hover:text-foreground border-border/60 cursor-pointer"
+            title="Take Photo with Camera"
+          >
+            <Camera className="h-3.5 w-3.5 text-primary" />
+            <span className="hidden sm:inline">Camera</span>
+          </Button>
 
           {/* Quick AI Model Switcher */}
           <DropdownMenu>
@@ -920,7 +1212,7 @@ export default function GroupTransactionsPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 px-2 text-xs font-mono text-muted-foreground hover:text-foreground gap-1 border-border/60"
+                className="h-9 px-2 text-xs font-mono text-muted-foreground hover:text-foreground gap-1 border-border/60"
                 title={`Active AI Model: ${selectedAiModel}`}
               >
                 <Bot className="h-3.5 w-3.5 text-primary" />
@@ -951,7 +1243,7 @@ export default function GroupTransactionsPage() {
             variant="ghost"
             size="sm"
             onClick={() => setShowResetDialog(true)}
-            className="text-xs text-muted-foreground hover:text-foreground"
+            className="text-xs text-muted-foreground hover:text-foreground h-9"
           >
             <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
             Reset
@@ -964,10 +1256,141 @@ export default function GroupTransactionsPage() {
         <Alert className="bg-primary/10 border-primary/30 animate-pulse">
           <Sparkles className="h-4 w-4 text-primary" />
           <AlertDescription className="text-primary font-medium text-xs sm:text-sm flex items-center justify-between">
-            <span>Gemini is analyzing your document, extracting line items, and matching category guidelines...</span>
+            <span>
+              Gemini is analyzing bill document(s), extracting line items, and matching category guidelines...
+              {queuedBills.length > 1 && ` (${queuedBills.filter(b => b.status === 'ready' || b.status === 'saved').length}/${queuedBills.length} ready)`}
+            </span>
             <Loader2 className="h-4 w-4 animate-spin shrink-0 ml-2" />
           </AlertDescription>
         </Alert>
+      )}
+
+      {/* Batch Bill Queue Bar */}
+      {queuedBills.length > 0 && (
+        <div className="flex flex-col gap-2 p-3 sm:p-4 rounded-xl border border-primary/20 bg-muted/40 shadow-sm">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Layers className="h-4 w-4 text-primary" />
+              <span className="font-semibold text-xs sm:text-sm text-foreground">
+                Bill Queue ({savedCount}/{queuedBills.length} Saved)
+              </span>
+              <Badge variant="outline" className="text-[10px] font-normal border-primary/40 text-primary">
+                Reviewing {activeBillIndex + 1} of {queuedBills.length}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-primary hover:text-primary hover:bg-primary/10 gap-1 px-2 cursor-pointer"
+                onClick={() => imageInputRef.current?.click()}
+                title="Add more bill images to queue"
+              >
+                <Plus className="h-3 w-3" />
+                <span>Add Image</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-primary hover:text-primary hover:bg-primary/10 gap-1 px-2 cursor-pointer"
+                onClick={() => pdfInputRef.current?.click()}
+                title="Add more bill PDFs to queue"
+              >
+                <Plus className="h-3 w-3" />
+                <span>Add PDF</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Queue Bill Items */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5 scrollbar-thin">
+            {queuedBills.map((bill, index) => {
+              const isActive = bill.id === activeBillId;
+              return (
+                <div
+                  key={bill.id}
+                  onClick={() => switchActiveBill(bill.id)}
+                  className={cn(
+                    "group relative flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium cursor-pointer transition-all shrink-0 select-none",
+                    isActive
+                      ? "bg-primary text-primary-foreground border-primary shadow-sm ring-2 ring-primary/30"
+                      : bill.status === 'saved'
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"
+                      : bill.status === 'error'
+                      ? "bg-destructive/10 border-destructive/30 text-destructive hover:bg-destructive/20"
+                      : "bg-background border-border text-foreground hover:bg-muted"
+                  )}
+                >
+                  {bill.status === 'processing' && (
+                    <Loader2 className={cn("h-3.5 w-3.5 animate-spin", isActive ? "text-primary-foreground" : "text-primary")} />
+                  )}
+                  {bill.status === 'saved' && (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  )}
+                  {bill.status === 'error' && (
+                    <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+                  )}
+                  {bill.status === 'ready' && (
+                    <Receipt className={cn("h-3.5 w-3.5", isActive ? "text-primary-foreground" : "text-primary")} />
+                  )}
+                  {bill.status === 'pending' && (
+                    <div className="h-2 w-2 rounded-full bg-muted-foreground/40 shrink-0" />
+                  )}
+
+                  <div className="flex flex-col text-left">
+                    <span className="truncate max-w-[130px] sm:max-w-[160px] font-semibold text-[11px]">
+                      {index + 1}. {bill.groupDescription || bill.fileName}
+                    </span>
+                    <span className={cn("text-[10px]", isActive ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                      {bill.status === 'saved'
+                        ? 'Saved ✓'
+                        : bill.status === 'processing'
+                        ? 'Analyzing...'
+                        : bill.status === 'error'
+                        ? 'Failed (Click to edit)'
+                        : bill.totalAmount > 0
+                        ? formatCurrency(bill.totalAmount)
+                        : bill.fileType.toUpperCase()}
+                    </span>
+                  </div>
+
+                  {bill.status === 'error' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        retryBill(bill.id);
+                      }}
+                      className="p-1 rounded hover:bg-destructive/20 text-destructive"
+                      title="Retry AI scan"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                    </button>
+                  )}
+
+                  {bill.status !== 'saved' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeBillFromQueue(bill.id);
+                      }}
+                      className={cn(
+                        "ml-1 p-0.5 rounded-full opacity-60 hover:opacity-100 transition-opacity",
+                        isActive ? "hover:bg-white/20 text-primary-foreground" : "hover:bg-muted-foreground/20 text-muted-foreground"
+                      )}
+                      title="Remove from queue"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* Document / Receipt Thumbnail Banner (if document loaded) */}
@@ -1505,16 +1928,44 @@ export default function GroupTransactionsPage() {
             >
               Cancel
             </Button>
+            {hasMoreUnsavedBills && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={goToNextBill}
+                className="text-xs text-muted-foreground hover:text-foreground hidden sm:inline-flex cursor-pointer"
+                title="Review next bill without saving this one yet"
+              >
+                Next Bill
+                <ChevronRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            )}
             <Button
               type="button"
               onClick={handleSaveClick}
-              disabled={isSubmitting || isSelectedMonthLocked || items.length === 0 || isScanningReceipt}
-              className="px-4 sm:px-6 font-semibold text-xs sm:text-sm h-10 shadow-sm"
+              disabled={isSubmitting || isSelectedMonthLocked || items.length === 0 || isCurrentBillProcessing}
+              className="px-4 sm:px-6 font-semibold text-xs sm:text-sm h-10 shadow-sm cursor-pointer"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Saving...
+                </>
+              ) : isCurrentBillProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Analyzing Bill...
+                </>
+              ) : hasMoreUnsavedBills ? (
+                <>
+                  Save & Next Bill ({activeBillIndex + 1}/{queuedBills.length})
+                  <ChevronRight className="ml-1.5 h-4 w-4" />
+                </>
+              ) : queuedBills.length > 1 ? (
+                <>
+                  Save & Finish ({items.length} items)
+                  <CheckCircle2 className="ml-1.5 h-4 w-4 text-emerald-400" />
                 </>
               ) : (
                 `Save Group (${items.length})`
@@ -1592,7 +2043,7 @@ export default function GroupTransactionsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { resetForm(); setShowResetDialog(false); }}>
+            <AlertDialogAction onClick={() => { resetAll(); setShowResetDialog(false); }}>
               Reset Form
             </AlertDialogAction>
           </AlertDialogFooter>
