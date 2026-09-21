@@ -37,28 +37,44 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
     const data = useMemo(() => {
         const subcategorySpending = new Map<string, { categoryName: string; subcategoryName: string; total: number; budget: number; transactions: Transaction[] }>();
 
-        // Only include subcategories that have a budget > 0 set for the month
+        // 1. Initialize with all subcategories from categories
         categories.forEach(cat => {
             (cat.subcategories || []).forEach(sub => {
                 const budget = sub.budget || 0;
-                if (budget > 0) {
-                    subcategorySpending.set(sub.id, { 
-                        categoryName: cat.name, 
-                        subcategoryName: sub.name, 
-                        total: 0, 
-                        budget, 
-                        transactions: [] 
-                    });
-                }
+                subcategorySpending.set(sub.id, { 
+                    categoryName: cat.name, 
+                    subcategoryName: sub.name, 
+                    total: 0, 
+                    budget, 
+                    transactions: [] 
+                });
             });
         });
 
-        // Aggregate matching transactions for those budgeted subcategories
+        // 2. Aggregate matching transactions for all subcategories
         transactions.forEach(txn => {
+            if (!txn.subcategory && !txn.subcategoryId) return;
+
             let subData = txn.subcategoryId ? subcategorySpending.get(txn.subcategoryId) : undefined;
-            if (!subData) {
-                const key = `${txn.category}___${txn.subcategory}`;
-                subData = Array.from(subcategorySpending.values()).find(s => `${s.categoryName}___${s.subcategoryName}` === key);
+            if (!subData && txn.subcategory) {
+                const targetSub = txn.subcategory.trim().toLowerCase();
+                const targetCat = txn.category ? txn.category.trim().toLowerCase() : '';
+                subData = Array.from(subcategorySpending.values()).find(s => 
+                    s.subcategoryName.trim().toLowerCase() === targetSub &&
+                    (!targetCat || s.categoryName.trim().toLowerCase() === targetCat)
+                );
+            }
+            if (!subData && txn.subcategory) {
+                // If transaction subcategory is not pre-registered in categories list
+                const dynamicKey = txn.subcategoryId || `${txn.category || 'Other'}___${txn.subcategory}`;
+                subData = {
+                    categoryName: txn.category || 'Other',
+                    subcategoryName: txn.subcategory,
+                    total: 0,
+                    budget: 0,
+                    transactions: []
+                };
+                subcategorySpending.set(dynamicKey, subData);
             }
             if (subData) {
                 subData.total += txn.amount;
@@ -73,12 +89,19 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
                 displayName: `${subcategoryName} (${categoryName})`,
                 total,
                 budget,
-                percentage: budget > 0 ? Math.round((total / budget) * 100) : 0,
+                percentage: budget > 0 ? Math.round((total / budget) * 100) : (total > 0 ? 100 : 0),
                 balance: budget - total,
                 transactions
             }))
             .filter(d => d.total > 0)
-            .sort((a, b) => b.percentage - a.percentage || b.budget - a.budget);
+            .sort((a, b) => {
+                if (a.budget > 0 && b.budget > 0) {
+                    return b.percentage - a.percentage || b.total - a.total;
+                }
+                if (a.budget > 0) return -1;
+                if (b.budget > 0) return 1;
+                return b.total - a.total;
+            });
     }, [categories, transactions]);
 
     const maxPercentage = useMemo(() => {
@@ -86,19 +109,26 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
         return Math.ceil(max / 10) * 10; // Round up to nearest 10
     }, [data]);
 
-    const CustomTooltip = ({ active, payload, label }: any) => {
+    const CustomTooltip = ({ active, payload }: any) => {
         if (active && payload && payload.length) {
             const item = payload[0].payload as SubcategoryChartData;
-            const isOver = item.total > item.budget;
+            const hasBudget = item.budget > 0;
+            const isOver = hasBudget && item.total > item.budget;
             return (
                 <div className="rounded-lg border bg-background p-2.5 shadow-sm space-y-1">
                     <p className="font-bold text-sm">{item.subcategoryName} <span className="text-xs text-muted-foreground font-normal">({item.categoryName})</span></p>
                     <p className="text-xs text-muted-foreground">
-                        Spent: <span className={`font-semibold ${isOver ? 'text-destructive' : 'text-foreground'}`}>{formatCurrency(item.total)}</span> / {formatCurrency(item.budget)}
+                        Spent: <span className={`font-semibold ${isOver ? 'text-destructive' : 'text-foreground'}`}>{formatCurrency(item.total)}</span> {hasBudget ? `/ ${formatCurrency(item.budget)}` : ''}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                        Balance: <span className={`font-semibold ${isOver ? 'text-destructive' : 'text-foreground'}`}>{formatCurrency(item.balance)}</span> {isOver ? '(Exceeded!)' : ''}
-                    </p>
+                    {hasBudget ? (
+                        <p className="text-xs text-muted-foreground">
+                            Balance: <span className={`font-semibold ${isOver ? 'text-destructive' : 'text-foreground'}`}>{formatCurrency(item.balance)}</span> {isOver ? '(Exceeded!)' : ''}
+                        </p>
+                    ) : (
+                        <p className="text-xs text-muted-foreground italic">
+                            No budget set
+                        </p>
+                    )}
                 </div>
             );
         }
@@ -109,7 +139,7 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
         return (
             <div className="text-center py-10 space-y-1">
                 <p className="text-muted-foreground text-sm font-medium">No subcategory expenses recorded for this month.</p>
-                <p className="text-xs text-muted-foreground">Subcategories with budget set will appear here once spending begins.</p>
+                <p className="text-xs text-muted-foreground">Subcategory spending will appear here once transactions are recorded.</p>
             </div>
         );
     }
@@ -117,7 +147,7 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
     return (
         <>
             <ResponsiveContainer width="100%" height={Math.max(250, data.length * 45)}>
-                <BarChart data={data} layout="vertical" margin={{ top: 5, right: 55, left: 10, bottom: 5 }} onClick={handleBarClick}>
+                <BarChart data={data} layout="vertical" margin={{ top: 5, right: 65, left: 10, bottom: 5 }} onClick={handleBarClick}>
                     <XAxis 
                         type="number" 
                         domain={[0, maxPercentage]} 
@@ -140,12 +170,22 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
                     <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--muted))' }} />
                     <Bar dataKey="percentage" radius={[0, 4, 4, 0]} className="cursor-pointer">
                         {data.map((entry, index) => (
-                            <Cell key={`sub-cell-${index}`} fill={entry.percentage > 100 ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'} />
+                            <Cell 
+                                key={`sub-cell-${index}`} 
+                                fill={entry.budget > 0 && entry.percentage > 100 ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'} 
+                            />
                         ))}
                         <LabelList 
                             dataKey="percentage" 
                             position="right" 
-                            formatter={(val: number) => `${val}%${val > 100 ? ' ⚠' : ''}`} 
+                            formatter={(val: any, index: number) => {
+                                const item = data[index];
+                                if (item && item.budget <= 0) {
+                                    return formatCurrency(item.total);
+                                }
+                                const num = Number(val);
+                                return `${num}%${num > 100 ? ' ⚠' : ''}`;
+                            }} 
                             className="text-xs font-bold" 
                         />
                     </Bar>

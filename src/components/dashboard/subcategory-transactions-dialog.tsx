@@ -77,18 +77,20 @@ export default function SubcategoryTransactionsDialog({
           <div className="text-sm text-muted-foreground space-y-1 pt-2">
             <div className="flex justify-between">
               <span>Budget:</span>
-              <span className="font-medium text-foreground">{formatCurrency(budget)}</span>
+              <span className="font-medium text-foreground">{budget > 0 ? formatCurrency(budget) : 'No budget set'}</span>
             </div>
              <div className="flex justify-between">
               <span>Spent:</span>
               <span className="font-medium text-foreground">{formatCurrency(spent)}</span>
             </div>
-             <div className="flex justify-between">
-              <span>Balance:</span>
-              <span className={`font-medium ${balance < 0 ? 'text-destructive font-bold' : 'text-foreground'}`}>
-                {formatCurrency(balance)} {balance < 0 ? '(Exceeded)' : ''}
-              </span>
-            </div>
+            {budget > 0 && (
+              <div className="flex justify-between">
+                <span>Balance:</span>
+                <span className={`font-medium ${balance < 0 ? 'text-destructive font-bold' : 'text-foreground'}`}>
+                  {formatCurrency(balance)} {balance < 0 ? '(Exceeded)' : ''}
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex justify-end items-center pt-4">
             <Select value={`${sortKey}-${sortOrder}`} onValueChange={(value) => {

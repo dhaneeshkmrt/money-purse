@@ -120,25 +120,48 @@ export function useCategories(tenantId: string | null, user: User | null, select
     const currentMonthKey = getMonthKey(year, month);
     let monthBudgets = budgets[currentMonthKey];
 
-    if (!monthBudgets) {
-      // Find the most recent previous month with budgets
-      const previousMonthKeys = Object.keys(budgets).sort().reverse();
-      const mostRecentMonthKey = previousMonthKeys.find(key => key < currentMonthKey);
+    // Find the most recent previous month that has budgets
+    const previousMonthKeys = Object.keys(budgets).sort().reverse();
+    const mostRecentMonthKey = previousMonthKeys.find(
+      key => key < currentMonthKey && Object.keys(budgets[key] || {}).length > 0
+    );
+    const prevBudgets = mostRecentMonthKey ? budgets[mostRecentMonthKey] : undefined;
 
-      if (mostRecentMonthKey && budgets[mostRecentMonthKey]) {
-        monthBudgets = budgets[mostRecentMonthKey];
-        const copyKey = `${tenantIdToFetch}_${currentMonthKey}`;
-        if (!copiedMonthRef.current[copyKey]) {
-          copiedMonthRef.current[copyKey] = true;
-          setIsCopyingBudget(true);
-          const updatedBudgets = { ...budgets, [currentMonthKey]: monthBudgets };
-          const budgetDocRef = doc(db, 'budgets', tenantIdToFetch);
-          setDoc(budgetDocRef, { budgets: updatedBudgets }, { merge: true })
-            .catch(err => console.error("Error auto-copying budgets:", err))
-            .finally(() => setIsCopyingBudget(false));
-        }
+    let needsSync = false;
+    if (!monthBudgets || Object.keys(monthBudgets).length === 0) {
+      if (prevBudgets) {
+        monthBudgets = { ...prevBudgets };
+        needsSync = true;
       } else {
         monthBudgets = {};
+      }
+    } else if (prevBudgets) {
+      // If current month has some budgets (e.g. only category budgets), but is missing
+      // subcategory or category budgets that existed in the previous month, inherit them
+      let hasMissing = false;
+      const mergedBudgets = { ...monthBudgets };
+      for (const [key, val] of Object.entries(prevBudgets)) {
+        if (mergedBudgets[key] === undefined) {
+          mergedBudgets[key] = val;
+          hasMissing = true;
+        }
+      }
+      if (hasMissing) {
+        monthBudgets = mergedBudgets;
+        needsSync = true;
+      }
+    }
+
+    if (needsSync && tenantIdToFetch) {
+      const copyKey = `${tenantIdToFetch}_${currentMonthKey}`;
+      if (!copiedMonthRef.current[copyKey]) {
+        copiedMonthRef.current[copyKey] = true;
+        setIsCopyingBudget(true);
+        const updatedBudgets = { ...budgets, [currentMonthKey]: monthBudgets };
+        const budgetDocRef = doc(db, 'budgets', tenantIdToFetch);
+        setDoc(budgetDocRef, { budgets: updatedBudgets }, { merge: true })
+          .catch(err => console.error("Error auto-copying budgets:", err))
+          .finally(() => setIsCopyingBudget(false));
       }
     }
 

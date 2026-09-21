@@ -60,7 +60,7 @@ export default function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Monthly Subcategory Expenses</CardTitle>
-            <CardDescription>Subcategory spending vs. budget for subcategories with a set budget limit.</CardDescription>
+            <CardDescription>Subcategory spending vs. budget for the selected period.</CardDescription>
           </CardHeader>
           <CardContent>
             <MonthlySubcategoryChart transactions={filteredTransactions} />
