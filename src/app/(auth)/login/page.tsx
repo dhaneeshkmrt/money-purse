@@ -10,6 +10,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
+import { getSharedFiles } from '@/lib/share-target-db';
+
 export const dynamic = 'force-dynamic';
 
 const GoogleIcon = () => (
@@ -27,9 +29,22 @@ export default function LoginPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  const navigateAfterAuth = async () => {
+    try {
+      const shared = await getSharedFiles();
+      if (shared && shared.length > 0) {
+        router.push('/transactions/group?shared=1');
+        return;
+      }
+    } catch {
+      // fallback to dashboard
+    }
+    router.push('/dashboard');
+  };
+
   useEffect(() => {
     if (user) {
-      router.push('/dashboard');
+      navigateAfterAuth();
     }
   }, [user, router]);
 
@@ -41,7 +56,7 @@ export default function LoginPage() {
         title: 'Login Successful',
         description: 'Welcome!',
       });
-      router.push('/dashboard');
+      await navigateAfterAuth();
     }
     // Error toasts are handled within the signInWithGoogle function
     setIsSubmitting(false);

@@ -7,6 +7,7 @@ import { useApp } from '@/lib/provider';
 import { useToast } from '@/hooks/use-toast';
 import { useCurrencyFormatter } from '@/hooks/useCurrencyFormatter';
 import { processReceiptTransaction } from '@/ai/flows/process-receipt-transaction';
+import { getSharedFiles, clearSharedFiles } from '@/lib/share-target-db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -589,14 +590,9 @@ export default function GroupTransactionsPage() {
     setProcessingTick(t => t + 1);
   }, []);
 
-  // Handle files selected (supports multiple files from single pick)
-  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const fileList = Array.from(files);
-    // Reset file input value so same files can be reselected if needed
-    e.target.value = '';
+  // Enqueue a list of files into the bill processing queue
+  const enqueueFiles = useCallback((fileList: File[]) => {
+    if (!fileList || fileList.length === 0) return;
 
     const newBills: QueuedBill[] = fileList.map((file, i) => {
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
@@ -646,7 +642,57 @@ export default function GroupTransactionsPage() {
     });
 
     setProcessingTick(t => t + 1);
+  }, [paidBy, paidByOptions, activeBillId, syncCurrentFormToDraft, loadBillIntoForm]);
+
+  // Handle files selected (supports multiple files from single pick)
+  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const fileList = Array.from(files);
+    // Reset file input value so same files can be reselected if needed
+    e.target.value = '';
+    enqueueFiles(fileList);
   };
+
+  // Check for files received via PWA Web Share Target
+  useEffect(() => {
+    let isMounted = true;
+    async function checkSharedFiles() {
+      try {
+        const shared = await getSharedFiles();
+        if (!isMounted || !shared || shared.length === 0) return;
+
+        // Clear shared files from IndexedDB immediately so they are not reprocessed
+        await clearSharedFiles();
+
+        const fileList = shared.map(item => {
+          const blob = item.data instanceof Blob ? item.data : new Blob([item.data], { type: item.type });
+          return new File([blob], item.name, { type: item.type, lastModified: item.timestamp });
+        });
+
+        enqueueFiles(fileList);
+
+        // Remove ?shared=1 from URL cleanly without page reload
+        if (typeof window !== 'undefined' && window.location.search.includes('shared=')) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+
+        toast({
+          title: 'Shared File Received',
+          description: `Queued ${fileList.length} ${fileList.length === 1 ? 'receipt' : 'receipts'} for AI scanning.`,
+        });
+      } catch (err) {
+        console.error('Failed to load shared files from Web Share Target:', err);
+      }
+    }
+
+    checkSharedFiles();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [enqueueFiles, toast]);
 
   // Background queue processing effect: processes pending bills one by one
   useEffect(() => {
