@@ -8,6 +8,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 import {googleAI} from '@genkit-ai/google-genai';
+import { DEFAULT_AI_MODEL, normalizeAiModel } from '@/lib/ai-models';
 
 const CategoryInfoSchema = z.object({
   name: z.string(),
@@ -97,6 +98,20 @@ IMPORTANT RULES:
 Receipt Document: {{media url=imageDataUri}}`,
 });
 
+const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-3.7-flash'];
+
+export interface ProcessReceiptResult {
+  success: boolean;
+  data?: ProcessReceiptOutput;
+  error?: string;
+  // Direct fields for backward compatibility
+  storeName?: string;
+  totalAmount?: number;
+  date?: string;
+  items?: ProcessReceiptOutput['items'];
+  notes?: string;
+}
+
 const processReceiptFlow = ai.defineFlow(
   {
     name: 'processReceiptFlow',
@@ -104,32 +119,63 @@ const processReceiptFlow = ai.defineFlow(
     outputSchema: ProcessReceiptOutputSchema,
   },
   async input => {
-    const selectedModelName = input.model || 'gemini-3.6-flash';
-    try {
-      const {output} = await prompt(input, {
-        model: googleAI.model(selectedModelName as any),
-      });
-      if (!output) throw new Error('AI could not analyze the receipt. Please ensure the receipt image or PDF is clear and readable.');
-      return output;
-    } catch (err: any) {
-      // If error is 503 high demand or unavailable and user was not already on gemini-2.0-flash, try fallback
-      if (selectedModelName !== 'gemini-2.0-flash' && (err?.message?.includes('503') || err?.message?.includes('high demand') || err?.message?.includes('UNAVAILABLE'))) {
-        console.warn(`Model ${selectedModelName} unavailable, falling back to gemini-2.0-flash...`);
+    const requestedModel = normalizeAiModel(input.model || DEFAULT_AI_MODEL);
+    const candidateModels = Array.from(new Set([requestedModel, ...FALLBACK_MODELS]));
+
+    let lastError: any = null;
+
+    for (let i = 0; i < candidateModels.length; i++) {
+      const modelName = candidateModels[i];
+      try {
+        if (i > 0) {
+          // Brief pause before trying fallback to allow rate limits / gateway to clear
+          await new Promise(resolve => setTimeout(resolve, 1000 * i));
+        }
         const {output} = await prompt(input, {
-          model: googleAI.model('gemini-2.0-flash'),
+          model: googleAI.model(modelName as any),
         });
-        if (output) return output;
+        if (output) {
+          return output;
+        }
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = err?.message || String(err);
+        console.warn(`Receipt AI scanning with model ${modelName} failed: ${errMsg}`);
+
+        // If there are more models to try, continue
+        if (i < candidateModels.length - 1) {
+          console.info(`Attempting fallback to ${candidateModels[i + 1]}...`);
+        }
       }
-      throw err;
     }
+
+    const failureReason = lastError?.message?.includes('503') || lastError?.message?.includes('high demand')
+      ? 'The AI model service is currently experiencing high demand. Please try again in a few moments.'
+      : (lastError?.message || 'AI could not analyze the receipt. Please ensure the receipt image or PDF is clear and readable.');
+
+    throw new Error(failureReason);
   }
 );
 
-export async function processReceiptTransaction(input: ProcessReceiptInput): Promise<ProcessReceiptOutput> {
+export async function processReceiptTransaction(input: ProcessReceiptInput): Promise<ProcessReceiptResult> {
   try {
-    return await processReceiptFlow(input);
+    const output = await processReceiptFlow(input);
+    return {
+      success: true,
+      data: output,
+      storeName: output.storeName,
+      totalAmount: output.totalAmount,
+      date: output.date,
+      items: output.items,
+      notes: output.notes,
+    };
   } catch (error: any) {
     console.error('Receipt AI processing failed:', error);
-    throw new Error(error.message || 'Failed to process receipt. Please ensure image is clear and try again.');
+    const message = error?.message || 'Failed to process receipt. Please ensure the image or document is clear and try again.';
+    return {
+      success: false,
+      error: message,
+    };
   }
 }
+

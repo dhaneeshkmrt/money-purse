@@ -67,7 +67,7 @@ import {
 import { cn } from '@/lib/utils';
 import { format, parseISO, getYear, getMonth, subDays, addDays } from 'date-fns';
 import type { Category, Transaction } from '@/lib/types';
-import { GEMINI_MODELS, DEFAULT_AI_MODEL } from '@/lib/ai-models';
+import { GEMINI_MODELS, DEFAULT_AI_MODEL, normalizeAiModel } from '@/lib/ai-models';
 
 // Safe arithmetic evaluator
 const evaluateExpression = (expr: string): number | null => {
@@ -437,7 +437,7 @@ export default function GroupTransactionsPage() {
 
   // Receipt Scanner States
   const [isScanningReceipt, setIsScanningReceipt] = useState(false);
-  const [selectedAiModel, setSelectedAiModel] = useState<string>(settings.aiModel || DEFAULT_AI_MODEL);
+  const [selectedAiModel, setSelectedAiModel] = useState<string>(normalizeAiModel(settings.aiModel));
   const [receiptDocPreview, setReceiptDocPreview] = useState<string | null>(null);
   const [receiptDocType, setReceiptDocType] = useState<'image' | 'pdf' | null>(null);
   const [receiptDocName, setReceiptDocName] = useState<string>('');
@@ -449,7 +449,7 @@ export default function GroupTransactionsPage() {
   // Sync with user settings
   useEffect(() => {
     if (settings.aiModel) {
-      setSelectedAiModel(settings.aiModel);
+      setSelectedAiModel(normalizeAiModel(settings.aiModel));
     }
   }, [settings.aiModel]);
 
@@ -728,7 +728,11 @@ export default function GroupTransactionsPage() {
           model: selectedAiModel,
         });
 
-        const parsed = parseAiReceiptResult(result, bill.fileName, categories);
+        if (!result.success || !result.data) {
+          throw new Error(result.error || 'Failed to analyze bill.');
+        }
+
+        const parsed = parseAiReceiptResult(result.data, bill.fileName, categories);
 
         // Update in queue
         setQueuedBills(prev => prev.map(b => {

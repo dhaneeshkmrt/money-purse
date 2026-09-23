@@ -47,6 +47,8 @@ For amounts, look for 'Total Premium' or 'Net Premium'.
 Document: {{media url=documentDataUri}}`,
 });
 
+const FALLBACK_MODELS = ['gemini-2.5-flash','gemini-3.5-flash', 'gemini-3.6-flash'];
+
 const extractInsuranceFlow = ai.defineFlow(
   {
     name: 'extractInsuranceFlow',
@@ -54,9 +56,19 @@ const extractInsuranceFlow = ai.defineFlow(
     outputSchema: ExtractInsuranceOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
-    if (!output) throw new Error('AI failed to read the document details. Please ensure the photo is clear.');
-    return output!;
+    let lastError: any = null;
+    for (const modelName of FALLBACK_MODELS) {
+      try {
+        const {output} = await prompt(input, {
+          model: googleAI.model(modelName as any),
+        });
+        if (output) return output;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Insurance AI extraction with ${modelName} failed:`, err?.message);
+      }
+    }
+    throw new Error(lastError?.message || 'AI failed to read the document details. Please ensure the photo is clear.');
   }
 );
 

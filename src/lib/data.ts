@@ -164,5 +164,5 @@ export const defaultSettings: Omit<Settings, 'tenantId' | 'dateInputStyle'> = {
   defaultSubcategory: '',
   defaultMicrocategory: '',
   defaultPaidBy: '',
-  aiModel: 'gemini-3.6-flash',
+  aiModel: 'gemini-2.5-flash',
 };

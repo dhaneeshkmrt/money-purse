@@ -39,7 +39,7 @@ import {
 import { format } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-import { GEMINI_MODELS, DEFAULT_AI_MODEL } from '@/lib/ai-models';
+import { GEMINI_MODELS, DEFAULT_AI_MODEL, normalizeAiModel } from '@/lib/ai-models';
 
 export const dynamic = 'force-dynamic';
 
@@ -782,18 +782,19 @@ export default function SettingsPage() {
                 control={settingsForm.control}
                 name="aiModel"
                 render={({ field }) => {
-                  const isPredefined = GEMINI_MODELS.some(m => m.value === field.value && m.value !== 'custom');
-                  const selectedSelectValue = isPredefined ? field.value : 'custom';
+                  const normalizedValue = normalizeAiModel(field.value);
+                  const isPredefined = GEMINI_MODELS.some(m => m.value === normalizedValue && m.value !== 'custom');
+                  const selectedSelectValue = isPredefined ? normalizedValue : 'custom';
 
                   return (
                     <div className="space-y-4">
                       <FormItem>
                         <FormLabel>Gemini AI Model</FormLabel>
                         <Select
-                          value={selectedSelectValue || 'gemini-2.0-flash'}
+                          value={selectedSelectValue || DEFAULT_AI_MODEL}
                           onValueChange={(val) => {
                             if (val === 'custom') {
-                              if (isPredefined) field.onChange('gemini-3.7-flash');
+                              if (isPredefined) field.onChange('');
                             } else {
                               field.onChange(val);
                             }
@@ -813,7 +814,7 @@ export default function SettingsPage() {
                           </SelectContent>
                         </Select>
                         <FormDescription>
-                          If a model experiences temporary high demand (503), switch to <strong>Gemini 2.0 Flash</strong> for high availability.
+                          Recommended: <strong>Gemini 2.5 Flash</strong>. The system automatically handles temporary spikes with intelligent fallback models.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -825,7 +826,7 @@ export default function SettingsPage() {
                             <Input
                               value={field.value || ''}
                               onChange={(e) => field.onChange(e.target.value)}
-                              placeholder="e.g. gemini-2.5-flash or gemini-3.0-flash"
+                              placeholder="e.g. gemini-2.5-flash or gemini-3.6-flash"
                               className="w-full md:w-2/3 font-mono text-sm"
                             />
                           </FormControl>

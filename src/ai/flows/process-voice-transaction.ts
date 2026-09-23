@@ -8,6 +8,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import {googleAI} from '@genkit-ai/google-genai';
+import { DEFAULT_AI_MODEL, normalizeAiModel } from '@/lib/ai-models';
 
 const CategoryInfoSchema = z.object({
   name: z.string(),
@@ -88,6 +89,8 @@ const prompt = ai.definePrompt({
   Audio: {{media url=audioDataUri}}`,
 });
 
+const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-3.7-flash'];
+
 const processVoiceTransactionFlow = ai.defineFlow(
   {
     name: 'processVoiceTransactionFlow',
@@ -95,23 +98,40 @@ const processVoiceTransactionFlow = ai.defineFlow(
     outputSchema: ProcessVoiceTransactionOutputSchema,
   },
   async input => {
-    const selectedModelName = input.model || 'gemini-3.6-flash';
-    try {
-      const {output} = await prompt(input, {
-        model: googleAI.model(selectedModelName as any),
-      });
-      if (!output) throw new Error('AI failed to generate a structured response. Please try with clearer audio.');
-      return output;
-    } catch (err: any) {
-      if (selectedModelName !== 'gemini-2.0-flash' && (err?.message?.includes('503') || err?.message?.includes('high demand') || err?.message?.includes('UNAVAILABLE'))) {
-        console.warn(`Model ${selectedModelName} unavailable, falling back to gemini-2.0-flash...`);
+    const requestedModel = normalizeAiModel(input.model || DEFAULT_AI_MODEL);
+    const candidateModels = Array.from(new Set([requestedModel, ...FALLBACK_MODELS]));
+
+    let lastError: any = null;
+
+    for (let i = 0; i < candidateModels.length; i++) {
+      const modelName = candidateModels[i];
+      try {
+        if (i > 0) {
+          // Brief pause before trying fallback to allow rate limits / gateway to clear
+          await new Promise(resolve => setTimeout(resolve, 1000 * i));
+        }
         const {output} = await prompt(input, {
-          model: googleAI.model('gemini-2.0-flash'),
+          model: googleAI.model(modelName as any),
         });
-        if (output) return output;
+        if (output) {
+          return output;
+        }
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = err?.message || String(err);
+        console.warn(`Voice AI processing with model ${modelName} failed: ${errMsg}`);
+
+        if (i < candidateModels.length - 1) {
+          console.info(`Attempting fallback to ${candidateModels[i + 1]}...`);
+        }
       }
-      throw err;
     }
+
+    const failureReason = lastError?.message?.includes('503') || lastError?.message?.includes('high demand')
+      ? 'The AI model service is currently experiencing high demand. Please try again in a few moments.'
+      : (lastError?.message || 'AI failed to generate a structured response. Please try with clearer audio.');
+
+    throw new Error(failureReason);
   }
 );
 
@@ -124,3 +144,4 @@ export async function processVoiceTransaction(input: ProcessVoiceTransactionInpu
     throw new Error(error.message || 'Failed to process voice note. Ensure microphone quality is good.');
   }
 }
+
