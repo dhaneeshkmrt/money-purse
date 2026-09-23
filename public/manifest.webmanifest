@@ -1,11 +1,17 @@
 {
+  "$schema": "https://json.schemastore.org/web-manifest-combined.json",
   "name": "Money Purse",
   "short_name": "MoneyPurse",
   "description": "An intelligent app to track your monthly expenses.",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "window-controls-overlay", "minimal-ui"],
+  "orientation": "any",
   "background_color": "#0a0e14",
   "theme_color": "#c5a059",
+  "categories": ["finance", "productivity", "utilities"],
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
@@ -24,12 +30,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
-    },
-    {
-      "src": "/images/logo.jpeg",
-      "sizes": "512x512",
-      "type": "image/jpeg",
-      "purpose": "any"
     }
   ],
   "share_target": {

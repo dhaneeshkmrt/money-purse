@@ -43,11 +43,10 @@ export default function RootLayout({
           rel="stylesheet"
         />
         <meta name="theme-color" content="#0a0e14" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 100'%3E%3Cpath d='M0 0 H80 V20 L60 20 V80 L80 80 V100 H0 V0 Z' fill='%23c5a059'/%3E%3Cpath d='M0 0 H60 L20 20 H0 V0 Z' fill='%23d4b06b'/%3E%3Cpath d='M0 100 H60 L20 80 H0 V100 Z' fill='%234ade80'/%3E%3Cpath d='M60 20 L80 20 V80 L60 80 L60 20 Z' fill='%23FFA500'/%3E%3Cpath d='M85 20 L160 20 V100 L140 100 L85 20 Z' fill='%23FF1493'/%3E%3Cpath d='M85 20 L140 100 L120 100 L85 45 V20 Z' fill='%23C71585'/%3E%3C/svg%3E" type="image/svg+xml" />
         <link rel="icon" href="/images/logo.jpeg" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-        {/* Manually including manifest with use-credentials to bypass Workstation CORS policy */}
-        <link rel="manifest" href="/manifest.json" crossOrigin="use-credentials" />
       </head>
       <body className={`${inter.variable} font-body antialiased`}>
         <AppProvider>
