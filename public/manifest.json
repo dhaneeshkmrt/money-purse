@@ -43,7 +43,17 @@
       "files": [
         {
           "name": "files",
-          "accept": ["image/*", "application/pdf"]
+          "accept": [
+            "image/*",
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "application/pdf",
+            ".pdf",
+            ".jpg",
+            ".jpeg",
+            ".png"
+          ]
         }
       ]
     }

@@ -1,10 +1,10 @@
-
 'use client';
 
 import { AppShell } from '@/components/app-shell';
 import { useApp } from '@/lib/provider';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { getSharedFiles } from '@/lib/share-target-db';
 
 // This layout will apply to all pages that need authentication
 export default function AppLayout({
@@ -14,6 +14,7 @@ export default function AppLayout({
 }>) {
   const { user, loadingAuth } = useApp();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!loadingAuth && !user) {
@@ -21,8 +22,52 @@ export default function AppLayout({
     }
   }, [user, loadingAuth, router]);
 
+  // If user opens or focuses the app on any page other than /transactions/group
+  // and there are pending shared files, route them to the group transaction scanner
+  useEffect(() => {
+    if (loadingAuth || !user) return;
+
+    let isChecking = false;
+    const checkRedirectToShared = async () => {
+      if (isChecking) return;
+      if (pathname === '/transactions/group') return;
+      isChecking = true;
+      try {
+        const shared = await getSharedFiles();
+        if (shared && shared.length > 0) {
+          router.push(`/transactions/group?shared=${Date.now()}`);
+        }
+      } catch (err) {
+        // ignore
+      } finally {
+        isChecking = false;
+      }
+    };
+
+    checkRedirectToShared();
+
+    const handleFocus = () => checkRedirectToShared();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') checkRedirectToShared();
+    };
+    const handleSwMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'SHARED_FILES_RECEIVED') {
+        checkRedirectToShared();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    navigator.serviceWorker?.addEventListener('message', handleSwMessage);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
+    };
+  }, [user, loadingAuth, pathname, router]);
+
   if (loadingAuth || !user) {
-    // You can add a loading spinner here
     return (
       <div className="flex h-screen items-center justify-center">
         <p>Loading...</p>

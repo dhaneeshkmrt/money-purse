@@ -7,7 +7,7 @@ export interface SharedFileRecord {
   id: string;
   name: string;
   type: string;
-  data: Blob;
+  data: ArrayBuffer | Blob;
   timestamp: number;
 }
 
@@ -49,7 +49,7 @@ export function openShareDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveSharedFile(file: Blob, name: string, type: string): Promise<string> {
+export async function saveSharedFile(fileData: ArrayBuffer | Blob, name: string, type: string): Promise<string> {
   const db = await openShareDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -58,15 +58,17 @@ export async function saveSharedFile(file: Blob, name: string, type: string): Pr
     const record: SharedFileRecord = {
       id,
       name: name || 'shared-document',
-      type: type || file.type || 'application/octet-stream',
-      data: file,
+      type: type || (fileData as any).type || 'application/octet-stream',
+      data: fileData,
       timestamp: Date.now(),
     };
 
-    const req = store.put(record);
-    req.onsuccess = () => resolve(id);
-    req.onerror = () => reject(req.error);
+    store.put(record);
+
+    // Crucial: Wait for transaction to complete (committed to disk)
+    tx.oncomplete = () => resolve(id);
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(new Error('IndexedDB transaction was aborted'));
   });
 }
 
@@ -94,11 +96,11 @@ export async function clearSharedFiles(): Promise<void> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
-      const req = store.clear();
+      store.clear();
 
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(new Error('IndexedDB clear aborted'));
     });
   } catch (err) {
     console.warn('[ShareTargetDB] Could not clear shared files:', err);
@@ -111,11 +113,11 @@ export async function deleteSharedFile(id: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
-      const req = store.delete(id);
+      store.delete(id);
 
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(new Error('IndexedDB delete aborted'));
     });
   } catch (err) {
     console.warn('[ShareTargetDB] Could not delete shared file:', err);

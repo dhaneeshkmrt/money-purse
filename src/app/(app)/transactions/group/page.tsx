@@ -656,43 +656,67 @@ export default function GroupTransactionsPage() {
   };
 
   // Check for files received via PWA Web Share Target
-  useEffect(() => {
-    let isMounted = true;
-    async function checkSharedFiles() {
-      try {
-        const shared = await getSharedFiles();
-        if (!isMounted || !shared || shared.length === 0) return;
+  const isCheckingSharedRef = useRef(false);
 
-        // Clear shared files from IndexedDB immediately so they are not reprocessed
-        await clearSharedFiles();
+  const checkSharedFiles = useCallback(async () => {
+    if (isCheckingSharedRef.current) return;
+    isCheckingSharedRef.current = true;
 
-        const fileList = shared.map(item => {
-          const blob = item.data instanceof Blob ? item.data : new Blob([item.data], { type: item.type });
-          return new File([blob], item.name, { type: item.type, lastModified: item.timestamp });
-        });
+    try {
+      const shared = await getSharedFiles();
+      if (!shared || shared.length === 0) return;
 
-        enqueueFiles(fileList);
+      // Clear shared files from IndexedDB immediately so they are not reprocessed
+      await clearSharedFiles();
 
-        // Remove ?shared=1 from URL cleanly without page reload
-        if (typeof window !== 'undefined' && window.location.search.includes('shared=')) {
-          window.history.replaceState(null, '', window.location.pathname);
-        }
+      const fileList = shared.map(item => {
+        const blob = item.data instanceof Blob ? item.data : new Blob([item.data], { type: item.type });
+        return new File([blob], item.name, { type: item.type, lastModified: item.timestamp });
+      });
 
-        toast({
-          title: 'Shared File Received',
-          description: `Queued ${fileList.length} ${fileList.length === 1 ? 'receipt' : 'receipts'} for AI scanning.`,
-        });
-      } catch (err) {
-        console.error('Failed to load shared files from Web Share Target:', err);
+      enqueueFiles(fileList);
+
+      // Remove ?shared= from URL cleanly without page reload
+      if (typeof window !== 'undefined' && window.location.search.includes('shared=')) {
+        window.history.replaceState(null, '', window.location.pathname);
       }
-    }
 
+      toast({
+        title: 'Shared File Received',
+        description: `Uploaded ${fileList.length} ${fileList.length === 1 ? 'receipt' : 'receipts'}. Starting AI scan...`,
+      });
+    } catch (err) {
+      console.error('Failed to load shared files from Web Share Target:', err);
+    } finally {
+      isCheckingSharedRef.current = false;
+    }
+  }, [enqueueFiles, toast]);
+
+  useEffect(() => {
     checkSharedFiles();
 
-    return () => {
-      isMounted = false;
+    const handleFocus = () => checkSharedFiles();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkSharedFiles();
+      }
     };
-  }, [enqueueFiles, toast]);
+    const handleSwMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'SHARED_FILES_RECEIVED') {
+        checkSharedFiles();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    navigator.serviceWorker?.addEventListener('message', handleSwMessage);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
+    };
+  }, [checkSharedFiles]);
 
   // Background queue processing effect: processes pending bills one by one
   useEffect(() => {

@@ -5,26 +5,26 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const files = formData.getAll('files') as File[];
+    const files: { name: string; type: string; base64: string }[] = [];
 
-    if (!files || files.length === 0) {
+    // Collect files from all formData entries
+    for (const [key, value] of formData.entries()) {
+      if (value && typeof value === 'object' && typeof (value as any).arrayBuffer === 'function') {
+        const file = value as File;
+        const buffer = await file.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        const name = file.name || `shared-bill-${Date.now()}`;
+        const type = file.type || (name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+        files.push({ name, type, base64 });
+      }
+    }
+
+    if (files.length === 0) {
       return NextResponse.redirect(new URL('/transactions/group', request.url), 303);
     }
 
-    // Convert uploaded files to base64 payloads to hand off to client-side IndexedDB
-    const filePayloads = await Promise.all(
-      files.map(async (file) => {
-        const buffer = await file.arrayBuffer();
-        const base64 = Buffer.from(buffer).toString('base64');
-        return {
-          name: file.name || 'shared-document',
-          type: file.type || 'application/octet-stream',
-          base64,
-        };
-      })
-    );
-
-    const safePayloadJson = JSON.stringify(filePayloads).replace(/</g, '\\u003c');
+    const safePayloadJson = JSON.stringify(files).replace(/</g, '\\u003c');
+    const redirectTarget = `/transactions/group?shared=${Date.now()}`;
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -109,12 +109,13 @@ export async function POST(request: Request) {
             });
             tx.oncomplete = () => resolve();
             tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(new Error('Tx aborted'));
           });
         }
       } catch (err) {
         console.error('Error saving shared files to IndexedDB:', err);
       }
-      window.location.replace('/transactions/group?shared=1');
+      window.location.replace('${redirectTarget}');
     })();
   </script>
 </body>
