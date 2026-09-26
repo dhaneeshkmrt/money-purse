@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
-import { getSharedFiles } from '@/lib/share-target-db';
+import { hasPendingSharedFiles } from '@/lib/share-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,9 +31,9 @@ export default function LoginPage() {
   
   const navigateAfterAuth = async () => {
     try {
-      const shared = await getSharedFiles();
-      if (shared && shared.length > 0) {
-        router.push('/transactions/group?shared=1');
+      const hasShared = await hasPendingSharedFiles();
+      if (hasShared) {
+        router.push(`/transactions/group?shared=1&ts=${Date.now()}`);
         return;
       }
     } catch {

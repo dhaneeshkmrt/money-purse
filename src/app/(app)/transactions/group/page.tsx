@@ -7,7 +7,7 @@ import { useApp } from '@/lib/provider';
 import { useToast } from '@/hooks/use-toast';
 import { useCurrencyFormatter } from '@/hooks/useCurrencyFormatter';
 import { processReceiptTransaction } from '@/ai/flows/process-receipt-transaction';
-import { getSharedFiles, clearSharedFiles } from '@/lib/share-target-db';
+import { retrieveAllSharedFiles } from '@/lib/share-storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -502,6 +502,7 @@ export default function GroupTransactionsPage() {
   const activeBillIdRef = useRef<string | null>(null);
   activeBillIdRef.current = activeBillId;
   const isProcessingRef = useRef(false);
+  const [shareStatusMessage, setShareStatusMessage] = useState<{ type: 'error' | 'warning' | 'info'; message: string } | null>(null);
 
   // Sync active form state to queued draft
   const syncCurrentFormToDraft = useCallback((draftId: string) => {
@@ -663,30 +664,75 @@ export default function GroupTransactionsPage() {
     isCheckingSharedRef.current = true;
 
     try {
-      const shared = await getSharedFiles();
-      if (!shared || shared.length === 0) return;
+      // 1. Inspect URL parameters for explicit errors/warnings from ServiceWorker or Route Handler
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const shareErr = params.get('share_err');
+        const shareWarn = params.get('share_warn');
 
-      // Clear shared files from IndexedDB immediately so they are not reprocessed
-      await clearSharedFiles();
-
-      const fileList = shared.map(item => {
-        const blob = item.data instanceof Blob ? item.data : new Blob([item.data], { type: item.type });
-        return new File([blob], item.name, { type: item.type, lastModified: item.timestamp });
-      });
-
-      enqueueFiles(fileList);
-
-      // Remove ?shared= from URL cleanly without page reload
-      if (typeof window !== 'undefined' && window.location.search.includes('shared=')) {
-        window.history.replaceState(null, '', window.location.pathname);
+        if (shareErr) {
+          const errText = decodeURIComponent(shareErr);
+          setShareStatusMessage({
+            type: 'error',
+            message: `Sharing Error: ${errText}. Please try selecting the receipt manually.`,
+          });
+          toast({
+            title: 'Share Processing Failed',
+            description: errText,
+            variant: 'destructive',
+          });
+        } else if (shareWarn) {
+          const warnText =
+            shareWarn === 'no_files_found' || shareWarn === 'server_no_files'
+              ? 'The system opened Money Purse, but no file attachments were received from the sharing app. Please try selecting the receipt manually.'
+              : `Share warning (${shareWarn}).`;
+          setShareStatusMessage({
+            type: 'warning',
+            message: warnText,
+          });
+          toast({
+            title: 'No Files in Share Request',
+            description: warnText,
+            variant: 'destructive',
+          });
+        }
       }
 
-      toast({
-        title: 'Shared File Received',
-        description: `Uploaded ${fileList.length} ${fileList.length === 1 ? 'receipt' : 'receipts'}. Starting AI scan...`,
-      });
-    } catch (err) {
+      // 2. Retrieve pending files from Cache Storage and/or IndexedDB
+      const files = await retrieveAllSharedFiles();
+
+      if (files && files.length > 0) {
+        setShareStatusMessage({
+          type: 'info',
+          message: `Received ${files.length} shared document(s). Uploading and scanning with AI...`,
+        });
+
+        enqueueFiles(files);
+
+        toast({
+          title: 'Shared Bill Received',
+          description: `Loaded ${files.length} document(s). Scanning with AI...`,
+        });
+
+        setTimeout(() => setShareStatusMessage(null), 6000);
+      } else if (typeof window !== 'undefined' && window.location.search.includes('shared=')) {
+        // 'shared=' was in URL but files could not be found
+        setShareStatusMessage({
+          type: 'warning',
+          message: 'The share link opened Money Purse, but the shared document could not be retrieved from storage. Please tap "Upload Image" or "Upload PDF" below to pick it manually.',
+        });
+      }
+
+      // 3. Clean up share query parameters from the address bar cleanly
+      if (typeof window !== 'undefined' && /[?&](shared|share_err|share_warn|ts)=/.test(window.location.search)) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    } catch (err: any) {
       console.error('Failed to load shared files from Web Share Target:', err);
+      setShareStatusMessage({
+        type: 'error',
+        message: `Failed to load shared file: ${err?.message || 'Unknown storage error'}.`,
+      });
     } finally {
       isCheckingSharedRef.current = false;
     }
@@ -1210,6 +1256,34 @@ export default function GroupTransactionsPage() {
         className="hidden"
         onChange={handleFilesSelected}
       />
+
+      {/* Share Target Status / Error Message Banner */}
+      {shareStatusMessage && (
+        <Alert
+          variant={shareStatusMessage.type === 'error' ? 'destructive' : 'default'}
+          className={
+            shareStatusMessage.type === 'info'
+              ? 'border-primary/50 bg-primary/10 text-foreground'
+              : shareStatusMessage.type === 'warning'
+              ? 'border-amber-500/50 bg-amber-500/10 text-foreground'
+              : ''
+          }
+        >
+          <div className="flex items-center justify-between w-full gap-2">
+            <AlertDescription className="text-sm font-medium">
+              {shareStatusMessage.message}
+            </AlertDescription>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 hover:bg-transparent shrink-0"
+              onClick={() => setShareStatusMessage(null)}
+            >
+              ✕
+            </Button>
+          </div>
+        </Alert>
+      )}
 
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

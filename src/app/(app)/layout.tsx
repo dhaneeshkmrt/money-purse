@@ -4,7 +4,7 @@ import { AppShell } from '@/components/app-shell';
 import { useApp } from '@/lib/provider';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { getSharedFiles } from '@/lib/share-target-db';
+import { hasPendingSharedFiles } from '@/lib/share-storage';
 
 // This layout will apply to all pages that need authentication
 export default function AppLayout({
@@ -33,9 +33,9 @@ export default function AppLayout({
       if (pathname === '/transactions/group') return;
       isChecking = true;
       try {
-        const shared = await getSharedFiles();
-        if (shared && shared.length > 0) {
-          router.push(`/transactions/group?shared=${Date.now()}`);
+        const hasPending = await hasPendingSharedFiles();
+        if (hasPending) {
+          router.push(`/transactions/group?shared=1&ts=${Date.now()}`);
         }
       } catch (err) {
         // ignore

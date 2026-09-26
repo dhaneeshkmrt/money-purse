@@ -1,4 +1,4 @@
-import { saveSharedFile } from '@/lib/share-target-db';
+import { persistSharedFiles, UnifiedFilePayload } from '@/lib/share-storage';
 
 declare const self: any;
 
@@ -9,44 +9,73 @@ self.addEventListener('fetch', (event: any) => {
   if (event.request.method === 'POST' && url.pathname.replace(/\/$/, '') === '/share-target') {
     event.respondWith(
       (async () => {
+        let redirectTarget = `/transactions/group?shared=1&ts=${Date.now()}`;
+
         try {
           const formData = await event.request.formData();
-          const files: { name: string; type: string; buffer: ArrayBuffer }[] = [];
+          const filesToSave: UnifiedFilePayload[] = [];
 
-          // Collect files from all formData entries to avoid field name mismatch
+          // Collect from standard field names and all entries
+          const candidateValues: any[] = [
+            ...formData.getAll('files'),
+            ...formData.getAll('file'),
+            ...formData.getAll('image'),
+            ...formData.getAll('receipt'),
+          ];
+
           for (const [key, value] of formData.entries()) {
-            if (value && typeof value === 'object' && typeof (value as any).arrayBuffer === 'function') {
-              const fileObj = value as File;
-              const name = fileObj.name || `shared-bill-${Date.now()}`;
-              const type = fileObj.type || (name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-              const buffer = await fileObj.arrayBuffer();
-              files.push({ name, type, buffer });
+            if (!candidateValues.includes(value)) {
+              candidateValues.push(value);
             }
           }
 
-          if (files.length > 0) {
-            for (const f of files) {
-              await saveSharedFile(f.buffer, f.name, f.type);
-            }
+          for (let idx = 0; idx < candidateValues.length; idx++) {
+            const item = candidateValues[idx];
+            if (item && typeof item === 'object') {
+              const fileObj = item as File;
+              const name = fileObj.name || `shared-bill-${Date.now()}-${idx + 1}`;
+              const type = fileObj.type || (name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
 
-            // Notify any already-open clients (app windows) immediately
+              if (typeof (fileObj as any).arrayBuffer === 'function') {
+                const buffer = await fileObj.arrayBuffer();
+                filesToSave.push({ name, type, data: buffer });
+              } else if (fileObj instanceof Blob) {
+                filesToSave.push({ name, type, data: fileObj });
+              }
+            }
+          }
+
+          if (filesToSave.length > 0) {
+            await persistSharedFiles(filesToSave);
+
+            // Notify open windows immediately
             try {
               const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
               for (const client of clientList) {
-                client.postMessage({ type: 'SHARED_FILES_RECEIVED', count: files.length, timestamp: Date.now() });
+                client.postMessage({
+                  type: 'SHARED_FILES_RECEIVED',
+                  count: filesToSave.length,
+                  timestamp: Date.now(),
+                });
               }
             } catch (notifyErr) {
               console.warn('[ServiceWorker] Could not postMessage to clients:', notifyErr);
             }
+
+            redirectTarget = `/transactions/group?shared=${filesToSave.length}&ts=${Date.now()}`;
+          } else {
+            console.warn('[ServiceWorker] POST /share-target received with 0 files.');
+            redirectTarget = `/transactions/group?share_warn=no_files_found&ts=${Date.now()}`;
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('[ServiceWorker] Error processing shared files:', err);
+          const safeMsg = encodeURIComponent(err?.message || 'sw_parse_error');
+          redirectTarget = `/transactions/group?share_err=${safeMsg}&ts=${Date.now()}`;
         }
 
-        // CRITICAL: Response.redirect requires an ABSOLUTE URL!
-        // We include a timestamp so that query changes trigger any active listeners
-        const redirectUrl = new URL(`/transactions/group?shared=${Date.now()}`, event.request.url).href;
-        return Response.redirect(redirectUrl, 303);
+        // Response.redirect requires an ABSOLUTE URL
+        const absoluteRedirect = new URL(redirectTarget, event.request.url).href;
+        return Response.redirect(absoluteRedirect, 303);
       })()
     );
   }
