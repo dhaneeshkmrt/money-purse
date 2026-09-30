@@ -149,7 +149,8 @@ interface AppContextType {
   addInsurance: (data: Omit<Insurance, 'id' | 'tenantId' | 'userId' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   editInsurance: (id: string, data: Partial<Omit<Insurance, 'id' | 'tenantId' | 'userId' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
   deleteInsurance: (id: string) => Promise<void>;
-  getInsuranceStatus: (expiryDate: string) => InsuranceStatus;
+  getInsuranceStatus: (expiryDate: string, isRenewed?: boolean) => InsuranceStatus;
+  renewInsurance: (id: string, renewalData: { newExpiryDate: string; newStartDate?: string; newPremiumAmount?: number; newPolicyNumber?: string; name?: string; notes?: string }) => Promise<void>;
 
   // Notes
   notes: Note[];
@@ -820,6 +821,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     editInsurance: insuranceHook.editInsurance,
     deleteInsurance: insuranceHook.deleteInsurance,
     getInsuranceStatus: insuranceHook.getInsuranceStatus,
+    renewInsurance: insuranceHook.renewInsurance,
 
     // Override transaction functions with lock-checking versions
     addTransaction: addTransactionWithLockCheck,

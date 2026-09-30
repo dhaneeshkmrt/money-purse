@@ -3,13 +3,12 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { DashboardStats } from '@/components/dashboard/dashboard-stats';
 import { useApp } from '@/lib/provider';
 import { DailyExpenseChart } from '@/components/dashboard/daily-expense-chart';
-import { CategoryBreakdown } from '@/components/dashboard/category-breakdown';
 import { MonthlyCategoryChart } from '@/components/dashboard/monthly-category-chart';
 import { MonthlySubcategoryChart } from '@/components/dashboard/monthly-subcategory-chart';
 import { CumulativeExpenseChart } from '@/components/dashboard/cumulative-expense-chart';
 import RemindersSection from '@/components/dashboard/reminders-section';
 import InsuranceReminders from '@/components/dashboard/insurance-reminders';
-import NotesReminderSection from '@/components/dashboard/notes-reminder-section';
+import PinnedNotesSection from '@/components/dashboard/pinned-notes-section';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,9 +28,10 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
         {userTenant?.featureAccess?.reminders && <RemindersSection />}
-        {userTenant?.featureAccess?.insurance && <InsuranceReminders />}
-        {userTenant?.featureAccess?.notes !== false && <NotesReminderSection />}
+        {userTenant?.featureAccess?.notes !== false && <PinnedNotesSection />}
       </div>
+
+      {userTenant?.featureAccess?.insurance !== false && <InsuranceReminders />}
 
       <DashboardStats transactions={filteredTransactions} year={selectedYear} month={selectedMonth} />
 
@@ -70,9 +70,6 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1">
         <CumulativeExpenseChart transactions={filteredTransactions} year={selectedYear} month={selectedMonth} />
-      </div>
-      <div className="grid grid-cols-1">
-        <CategoryBreakdown transactions={filteredTransactions} />
       </div>
     </div>
   );

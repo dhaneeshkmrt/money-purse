@@ -80,3 +80,48 @@ self.addEventListener('fetch', (event: any) => {
     );
   }
 });
+
+// Handle mobile push notification click
+self.addEventListener('notificationclick', (event: any) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/insurance';
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList: any[]) => {
+        // If an open window exists, focus and navigate it
+        for (const client of clientList) {
+          if (client.url && 'focus' in client) {
+            client.navigate(targetUrl);
+            return client.focus();
+          }
+        }
+        // Otherwise open a new window
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+      })
+  );
+});
+
+// Handle incoming background push notifications
+self.addEventListener('push', (event: any) => {
+  if (!event.data) return;
+  try {
+    const payload = event.data.json();
+    event.waitUntil(
+      self.registration.showNotification(payload.title || '🛡️ Insurance Renewal Alert', {
+        body: payload.body,
+        icon: payload.icon || '/icons/icon-192x192.png',
+        badge: payload.badge || '/icons/icon-192x192.png',
+        data: payload.data || { url: '/insurance' },
+        vibrate: [200, 100, 200, 100, 200],
+        tag: payload.tag || 'insurance-saturday-reminder',
+      })
+    );
+  } catch (err) {
+    console.error('[ServiceWorker] Push notification error:', err);
+  }
+});
+

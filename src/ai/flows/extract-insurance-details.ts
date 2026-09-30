@@ -23,6 +23,7 @@ const ExtractInsuranceOutputSchema = z.object({
   premiumAmount: z.number().describe('The premium amount to be paid.'),
   startDate: z.string().describe('The policy start date in YYYY-MM-DD format.'),
   expiryDate: z.string().describe('The policy expiration date in YYYY-MM-DD format.'),
+  name: z.string().optional().describe('The name of the insured person, policyholder, or vehicle name if found (e.g. John Doe, Honda City).'),
   notes: z.string().optional().describe('Any other important details observed.'),
 });
 export type ExtractInsuranceOutput = z.infer<typeof ExtractInsuranceOutputSchema>;

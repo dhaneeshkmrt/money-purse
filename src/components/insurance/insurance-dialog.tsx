@@ -35,13 +35,14 @@ export function InsuranceDialog({
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  const [name, setName] = useState('');
   const [type, setType] = useState<InsuranceType>('Motor');
   const [provider, setProvider] = useState('');
   const [policyNumber, setPolicyNumber] = useState('');
   const [premiumAmount, setPremiumAmount] = useState('');
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [expiryDate, setExpiryDate] = useState(format(addYears(new Date(), 1), 'yyyy-MM-dd'));
-  const [reminderDate, setReminderDate] = useState(format(subDays(addYears(new Date(), 1), 30), 'yyyy-MM-dd'));
+  const [reminderDate, setReminderDate] = useState(format(subDays(addYears(new Date(), 1), 60), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
   const [docBase64, setDocBase64] = useState<string | null>(null);
   
@@ -53,13 +54,14 @@ export function InsuranceDialog({
   useEffect(() => {
     if (open) {
       if (insurance) {
+        setName(insurance.name || '');
         setType(insurance.type);
         setProvider(insurance.provider);
         setPolicyNumber(insurance.policyNumber);
         setPremiumAmount(insurance.premiumAmount.toString());
         setStartDate(insurance.startDate);
         setExpiryDate(insurance.expiryDate);
-        setReminderDate(insurance.reminderDate || format(subDays(parseISO(insurance.expiryDate), 30), 'yyyy-MM-dd'));
+        setReminderDate(insurance.reminderDate || format(subDays(parseISO(insurance.expiryDate), 60), 'yyyy-MM-dd'));
         setNotes(insurance.notes || '');
         setDocBase64(null);
       } else {
@@ -93,10 +95,11 @@ export function InsuranceDialog({
               setStartDate(result.startDate);
               setExpiryDate(result.expiryDate);
               
-              // Default reminder to 30 days before expiry
+              // Default reminder to 60 days before expiry
               const parsedExpiry = parseISO(result.expiryDate);
-              setReminderDate(format(subDays(parsedExpiry, 30), 'yyyy-MM-dd'));
+              setReminderDate(format(subDays(parsedExpiry, 60), 'yyyy-MM-dd'));
               
+              if (result.name) setName(result.name);
               if (result.notes) setNotes(result.notes);
               
               toast({ title: 'Scan Successful', description: 'AI has extracted the policy details.' });
@@ -115,6 +118,7 @@ export function InsuranceDialog({
     setIsSubmitting(true);
     try {
       const data = {
+          name: name.trim() || undefined,
           type,
           provider,
           policyNumber,
@@ -142,10 +146,10 @@ export function InsuranceDialog({
   };
 
   const reset = () => {
-    setType('Motor'); setProvider(''); setPolicyNumber(''); setPremiumAmount('');
+    setName(''); setType('Motor'); setProvider(''); setPolicyNumber(''); setPremiumAmount('');
     setStartDate(format(new Date(), 'yyyy-MM-dd'));
     setExpiryDate(format(addYears(new Date(), 1), 'yyyy-MM-dd'));
-    setReminderDate(format(subDays(addYears(new Date(), 1), 30), 'yyyy-MM-dd'));
+    setReminderDate(format(subDays(addYears(new Date(), 1), 60), 'yyyy-MM-dd'));
     setNotes(''); setDocBase64(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -201,6 +205,18 @@ export function InsuranceDialog({
                     </div>
                 </>
             )}
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium flex items-center justify-between">
+              <span>Policy Name / For Whom</span>
+              <span className="text-xs text-muted-foreground font-normal">e.g. Dad, Mom, Self, Car i20</span>
+            </label>
+            <Input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. Dad's Health Insurance, My Term Plan, Honda City"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

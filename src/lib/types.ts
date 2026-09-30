@@ -286,12 +286,24 @@ export type Repayment = {
 // Insurance System Types
 export type InsuranceType = 'Motor' | 'Health' | 'Term' | 'Life' | 'Home' | 'Travel' | 'Other';
 
-export type InsuranceStatus = 'Active' | 'Expiring Soon' | 'Expired';
+export type InsuranceStatus = 'Active' | 'Expiring Soon' | 'Expired' | 'Renewed';
+
+export type InsuranceRenewalRecord = {
+  id: string;
+  name?: string;
+  policyNumber: string;
+  startDate: string;
+  expiryDate: string;
+  premiumAmount: number;
+  renewedAt: string;
+  notes?: string;
+};
 
 export type Insurance = {
   id: string;
   tenantId: string;
   userId: string;
+  name?: string; // Policy Name or for whom it is (e.g. "Dad", "Mom", "Self", "Car i20")
   type: InsuranceType;
   provider: string;
   policyNumber: string;
@@ -302,6 +314,11 @@ export type Insurance = {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  isRenewed?: boolean;
+  renewedAt?: string;
+  previousExpiryDate?: string;
+  renewalCount?: number;
+  renewalHistory?: InsuranceRenewalRecord[];
 };
 
 // Notes System Types
