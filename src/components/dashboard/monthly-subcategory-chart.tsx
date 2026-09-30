@@ -34,6 +34,17 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
         setDialogOpen(true);
     }, []);
 
+    const activeSubcategoryTransactions = useMemo(() => {
+        if (!selectedSubcategoryData) return [];
+        const targetSub = selectedSubcategoryData.subcategoryName.trim().toLowerCase();
+        const targetCat = selectedSubcategoryData.categoryName.trim().toLowerCase();
+        return transactions.filter(t => {
+            const subName = (t.subcategory || '').trim().toLowerCase();
+            const catName = (t.category || '').trim().toLowerCase();
+            return subName === targetSub && (!targetCat || catName === targetCat);
+        });
+    }, [selectedSubcategoryData, transactions]);
+
     const data = useMemo(() => {
         const subcategorySpending = new Map<string, { categoryName: string; subcategoryName: string; total: number; budget: number; transactions: Transaction[] }>();
 
@@ -83,25 +94,18 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
         });
 
         return Array.from(subcategorySpending.values())
+            .filter(d => d.budget > 0 && d.total > 0)
             .map(({ categoryName, subcategoryName, total, budget, transactions }): SubcategoryChartData => ({
                 categoryName,
                 subcategoryName,
                 displayName: `${subcategoryName} (${categoryName})`,
                 total,
                 budget,
-                percentage: budget > 0 ? Math.round((total / budget) * 100) : (total > 0 ? 100 : 0),
+                percentage: Math.round((total / budget) * 100),
                 balance: budget - total,
                 transactions
             }))
-            .filter(d => d.total > 0)
-            .sort((a, b) => {
-                if (a.budget > 0 && b.budget > 0) {
-                    return b.percentage - a.percentage || b.total - a.total;
-                }
-                if (a.budget > 0) return -1;
-                if (b.budget > 0) return 1;
-                return b.total - a.total;
-            });
+            .sort((a, b) => b.percentage - a.percentage || b.total - a.total);
     }, [categories, transactions]);
 
     const maxPercentage = useMemo(() => {
@@ -112,23 +116,16 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
     const CustomTooltip = ({ active, payload }: any) => {
         if (active && payload && payload.length) {
             const item = payload[0].payload as SubcategoryChartData;
-            const hasBudget = item.budget > 0;
-            const isOver = hasBudget && item.total > item.budget;
+            const isOver = item.total > item.budget;
             return (
                 <div className="rounded-lg border bg-background p-2.5 shadow-sm space-y-1">
                     <p className="font-bold text-sm">{item.subcategoryName} <span className="text-xs text-muted-foreground font-normal">({item.categoryName})</span></p>
                     <p className="text-xs text-muted-foreground">
-                        Spent: <span className={`font-semibold ${isOver ? 'text-destructive' : 'text-foreground'}`}>{formatCurrency(item.total)}</span> {hasBudget ? `/ ${formatCurrency(item.budget)}` : ''}
+                        Spent: <span className={`font-semibold ${isOver ? 'text-destructive' : 'text-foreground'}`}>{formatCurrency(item.total)}</span> / {formatCurrency(item.budget)}
                     </p>
-                    {hasBudget ? (
-                        <p className="text-xs text-muted-foreground">
-                            Balance: <span className={`font-semibold ${isOver ? 'text-destructive' : 'text-foreground'}`}>{formatCurrency(item.balance)}</span> {isOver ? '(Exceeded!)' : ''}
-                        </p>
-                    ) : (
-                        <p className="text-xs text-muted-foreground italic">
-                            No budget set
-                        </p>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                        Balance: <span className={`font-semibold ${isOver ? 'text-destructive' : 'text-foreground'}`}>{formatCurrency(item.balance)}</span> {isOver ? '(Exceeded!)' : ''}
+                    </p>
                 </div>
             );
         }
@@ -139,7 +136,7 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
         return (
             <div className="text-center py-10 space-y-1">
                 <p className="text-muted-foreground text-sm font-medium">No subcategory expenses recorded for this month.</p>
-                <p className="text-xs text-muted-foreground">Subcategory spending will appear here once transactions are recorded.</p>
+                <p className="text-xs text-muted-foreground">Subcategories with a budget set will appear here once spending begins.</p>
             </div>
         );
     }
@@ -172,17 +169,13 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
                         {data.map((entry, index) => (
                             <Cell 
                                 key={`sub-cell-${index}`} 
-                                fill={entry.budget > 0 && entry.percentage > 100 ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'} 
+                                fill={entry.percentage > 100 ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'} 
                             />
                         ))}
                         <LabelList 
                             dataKey="percentage" 
                             position="right" 
-                            formatter={(val: any, index: number) => {
-                                const item = data[index];
-                                if (item && item.budget <= 0) {
-                                    return formatCurrency(item.total);
-                                }
+                            formatter={(val: any) => {
                                 const num = Number(val);
                                 return `${num}%${num > 100 ? ' ⚠' : ''}`;
                             }} 
@@ -198,7 +191,7 @@ export function MonthlySubcategoryChart({ transactions }: MonthlySubcategoryChar
                     onOpenChange={setDialogOpen}
                     categoryName={selectedSubcategoryData.categoryName}
                     subcategoryName={selectedSubcategoryData.subcategoryName}
-                    transactions={selectedSubcategoryData.transactions}
+                    transactions={activeSubcategoryTransactions}
                     budget={selectedSubcategoryData.budget}
                     spent={selectedSubcategoryData.total}
                 />

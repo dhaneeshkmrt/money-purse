@@ -33,6 +33,14 @@ export function MonthlyCategoryChart({ transactions }: MonthlyCategoryChartProps
         setDialogOpen(true);
     }, []);
 
+    const activeCategoryTransactions = useMemo(() => {
+        if (!selectedCategoryData?.name) return [];
+        return transactions.filter(t => {
+            const cat = categories.find(c => c.name === selectedCategoryData.name);
+            return t.category === selectedCategoryData.name || (cat && t.categoryId === cat.id);
+        });
+    }, [selectedCategoryData?.name, transactions, categories]);
+
     const data = useMemo(() => {
         const categorySpending = new Map<string, { name: string; total: number; budget: number; transactions: Transaction[] }>();
 
@@ -131,7 +139,7 @@ export function MonthlyCategoryChart({ transactions }: MonthlyCategoryChartProps
                     open={dialogOpen}
                     onOpenChange={setDialogOpen}
                     categoryName={selectedCategoryData.name}
-                    transactions={selectedCategoryData.transactions}
+                    transactions={activeCategoryTransactions}
                     budget={selectedCategoryData.budget}
                     spent={selectedCategoryData.total}
                 />
