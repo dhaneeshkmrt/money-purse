@@ -17,6 +17,7 @@ import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { AppShellNav } from './app-shell-nav';
 import { AppShellHeader } from './app-shell-header';
+import { APP_VERSION } from '@/lib/version';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -42,9 +43,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </SidebarContent>
         <SidebarFooter>
           <div className="flex items-center gap-2 p-2">
-            <div className="flex-grow">
-              <p className="font-semibold">{user?.name}</p>
+            <div className="flex-grow min-w-0">
+              <p className="font-semibold truncate">{user?.name}</p>
             </div>
+            <span
+              className="text-[11px] font-mono text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded border border-border/50 shrink-0 select-none"
+              title={`Version ${APP_VERSION}`}
+            >
+              v{APP_VERSION}
+            </span>
             <Button variant="ghost" size="icon" onClick={handleSignOut} title="Sign Out">
               <LogOut />
             </Button>

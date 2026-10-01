@@ -1,6 +1,6 @@
 {
   "name": "nextn",
-  "version": "0.1.0",
+  "version": "1.0.002",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 9002",
@@ -9,7 +9,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "version:bump": "node scripts/bump-version.js",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.7",
