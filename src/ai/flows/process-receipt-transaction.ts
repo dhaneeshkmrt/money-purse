@@ -4,9 +4,8 @@
  * store name, date, and itemized split transactions matched to categories.
  */
 
-export const maxDuration = 60;
-
 import {ai} from '@/ai/genkit';
+
 
 import {z} from 'genkit';
 
