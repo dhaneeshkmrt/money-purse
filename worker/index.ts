@@ -9,38 +9,48 @@ self.addEventListener('fetch', (event: any) => {
   if (event.request.method === 'POST' && url.pathname.replace(/\/$/, '') === '/share-target') {
     event.respondWith(
       (async () => {
-        let redirectTarget = `/transactions/group?shared=1&ts=${Date.now()}`;
+        // Clone request BEFORE reading formData, so if SW fails or has 0 files,
+        // we can still forward the original multipart request to the server!
+        let reqForFallback: Request | null = null;
+        try {
+          reqForFallback = event.request.clone();
+        } catch (cloneErr) {
+          console.warn('[ServiceWorker] Could not clone share-target request:', cloneErr);
+        }
 
         try {
           const formData = await event.request.formData();
           const filesToSave: UnifiedFilePayload[] = [];
+          const allEntries = Array.from(formData.entries()) as [string, any][];
 
-          // Collect from standard field names and all entries
-          const candidateValues: any[] = [
-            ...formData.getAll('files'),
-            ...formData.getAll('file'),
-            ...formData.getAll('image'),
-            ...formData.getAll('receipt'),
-          ];
+          for (let idx = 0; idx < allEntries.length; idx++) {
+            const [key, value] = allEntries[idx];
+            if (value && typeof value === 'object' && (value instanceof Blob || typeof (value as any).arrayBuffer === 'function')) {
+              const fileObj = value as File;
+              // Check if file has data (not empty 0-byte stream)
+              if (typeof fileObj.size === 'number' ? fileObj.size > 0 : true) {
+                const name = fileObj.name || `shared-bill-${Date.now()}-${idx + 1}`;
+                const type = fileObj.type || (name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
 
-          for (const [key, value] of formData.entries()) {
-            if (!candidateValues.includes(value)) {
-              candidateValues.push(value);
-            }
-          }
-
-          for (let idx = 0; idx < candidateValues.length; idx++) {
-            const item = candidateValues[idx];
-            if (item && typeof item === 'object') {
-              const fileObj = item as File;
-              const name = fileObj.name || `shared-bill-${Date.now()}-${idx + 1}`;
-              const type = fileObj.type || (name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-
-              if (typeof (fileObj as any).arrayBuffer === 'function') {
-                const buffer = await fileObj.arrayBuffer();
-                filesToSave.push({ name, type, data: buffer });
-              } else if (fileObj instanceof Blob) {
-                filesToSave.push({ name, type, data: fileObj });
+                if (typeof (fileObj as any).arrayBuffer === 'function') {
+                  const buffer = await fileObj.arrayBuffer();
+                  filesToSave.push({ name, type, data: buffer });
+                } else if (fileObj instanceof Blob) {
+                  filesToSave.push({ name, type, data: fileObj });
+                }
+              }
+            } else if (typeof value === 'string') {
+              // Check if value is a data URI
+              if (value.startsWith('data:image/') || value.startsWith('data:application/pdf')) {
+                const mime = value.substring(5, value.indexOf(';'));
+                const base64Data = value.substring(value.indexOf(',') + 1);
+                const byteCharacters = atob(base64Data);
+                const byteNumbers = new Uint8Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                  byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const name = `shared-bill-${Date.now()}-${idx + 1}.${mime.includes('pdf') ? 'pdf' : 'jpg'}`;
+                filesToSave.push({ name, type: mime, data: byteNumbers.buffer });
               }
             }
           }
@@ -62,20 +72,40 @@ self.addEventListener('fetch', (event: any) => {
               console.warn('[ServiceWorker] Could not postMessage to clients:', notifyErr);
             }
 
-            redirectTarget = `/transactions/group?shared=${filesToSave.length}&ts=${Date.now()}`;
-          } else {
-            console.warn('[ServiceWorker] POST /share-target received with 0 files.');
-            redirectTarget = `/transactions/group?share_warn=no_files_found&ts=${Date.now()}`;
+            const redirectTarget = `/transactions/group?shared=${filesToSave.length}&ts=${Date.now()}`;
+            return Response.redirect(new URL(redirectTarget, event.request.url).href, 303);
           }
+
+          // If SW extracted 0 files (e.g. Android WebAPK permission boundary issue),
+          // forward the request to the Next.js server route handler!
+          console.warn('[ServiceWorker] 0 files extracted in Service Worker. Forwarding to server route...');
+          if (reqForFallback) {
+            try {
+              return await fetch(reqForFallback);
+            } catch (fetchErr) {
+              console.warn('[ServiceWorker] Fallback server fetch failed:', fetchErr);
+            }
+          }
+
+          // If fallback also failed or is offline:
+          const debugSummary = allEntries
+            .map(([k, v]: [string, any]) => `${k}:${typeof v === 'object' ? (v instanceof Blob ? `blob(${v.size},${v.type})` : 'obj') : typeof v}`)
+            .join(';');
+          const fallbackUrl = `/transactions/group?share_warn=no_files_found&source=sw&debug=${encodeURIComponent(debugSummary || 'empty_form')}&ts=${Date.now()}`;
+          return Response.redirect(new URL(fallbackUrl, event.request.url).href, 303);
         } catch (err: any) {
           console.error('[ServiceWorker] Error processing shared files:', err);
+          if (reqForFallback) {
+            try {
+              return await fetch(reqForFallback);
+            } catch (fallbackErr) {
+              // ignore
+            }
+          }
           const safeMsg = encodeURIComponent(err?.message || 'sw_parse_error');
-          redirectTarget = `/transactions/group?share_err=${safeMsg}&ts=${Date.now()}`;
+          const errUrl = `/transactions/group?share_err=${safeMsg}&source=sw&ts=${Date.now()}`;
+          return Response.redirect(new URL(errUrl, event.request.url).href, 303);
         }
-
-        // Response.redirect requires an ABSOLUTE URL
-        const absoluteRedirect = new URL(redirectTarget, event.request.url).href;
-        return Response.redirect(absoluteRedirect, 303);
       })()
     );
   }
@@ -84,44 +114,26 @@ self.addEventListener('fetch', (event: any) => {
 // Handle mobile push notification click
 self.addEventListener('notificationclick', (event: any) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || '/insurance';
+
+  const data = event.notification.data || {};
+  let targetUrl = data.url || '/reminders';
 
   event.waitUntil(
-    self.clients
-      .matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList: any[]) => {
-        // If an open window exists, focus and navigate it
-        for (const client of clientList) {
-          if (client.url && 'focus' in client) {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList: any[]) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          if (client.url.includes(targetUrl)) {
+            return client.focus();
+          }
+          if (client.url) {
             client.navigate(targetUrl);
             return client.focus();
           }
         }
-        // Otherwise open a new window
-        if (self.clients.openWindow) {
-          return self.clients.openWindow(targetUrl);
-        }
-      })
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
   );
 });
-
-// Handle incoming background push notifications
-self.addEventListener('push', (event: any) => {
-  if (!event.data) return;
-  try {
-    const payload = event.data.json();
-    event.waitUntil(
-      self.registration.showNotification(payload.title || '🛡️ Insurance Renewal Alert', {
-        body: payload.body,
-        icon: payload.icon || '/icons/icon-192x192.png',
-        badge: payload.badge || '/icons/icon-192x192.png',
-        data: payload.data || { url: '/insurance' },
-        vibrate: [200, 100, 200, 100, 200],
-        tag: payload.tag || 'insurance-saturday-reminder',
-      })
-    );
-  } catch (err) {
-    console.error('[ServiceWorker] Push notification error:', err);
-  }
-});
-

@@ -671,10 +671,11 @@ export default function GroupTransactionsPage() {
         const shareWarn = params.get('share_warn');
 
         if (shareErr) {
+          const source = params.get('source') || 'unknown';
           const errText = decodeURIComponent(shareErr);
           setShareStatusMessage({
             type: 'error',
-            message: `Sharing Error: ${errText}. Please try selecting the receipt manually.`,
+            message: `Sharing Error (${source}): ${errText}. Please try selecting the receipt manually.`,
           });
           toast({
             title: 'Share Processing Failed',
@@ -682,10 +683,11 @@ export default function GroupTransactionsPage() {
             variant: 'destructive',
           });
         } else if (shareWarn) {
-          const warnText =
-            shareWarn === 'no_files_found' || shareWarn === 'server_no_files'
-              ? 'The system opened Money Purse, but no file attachments were received from the sharing app. Please try selecting the receipt manually.'
-              : `Share warning (${shareWarn}).`;
+          const source = params.get('source') || 'unknown';
+          const debug = params.get('debug') ? decodeURIComponent(params.get('debug')!) : '';
+          const detail = debug ? ` (Details: ${debug})` : '';
+
+          const warnText = `No file attachments were received from the sharing app (Source: ${source})${detail}. Please use the buttons below to pick your receipt manually.`;
           setShareStatusMessage({
             type: 'warning',
             message: warnText,
@@ -1269,18 +1271,45 @@ export default function GroupTransactionsPage() {
               : ''
           }
         >
-          <div className="flex items-center justify-between w-full gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-3">
             <AlertDescription className="text-sm font-medium">
               {shareStatusMessage.message}
             </AlertDescription>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0 hover:bg-transparent shrink-0"
-              onClick={() => setShareStatusMessage(null)}
-            >
-              ✕
-            </Button>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+              {shareStatusMessage.type !== 'info' && (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1 border-primary/40 font-semibold cursor-pointer"
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    <Upload className="h-3 w-3 text-primary" />
+                    <span>Pick Image</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1 border-primary/40 font-semibold cursor-pointer"
+                    onClick={() => pdfInputRef.current?.click()}
+                  >
+                    <FileText className="h-3 w-3 text-primary" />
+                    <span>Pick PDF</span>
+                  </Button>
+                </>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 hover:bg-muted/40 cursor-pointer text-muted-foreground"
+                onClick={() => setShareStatusMessage(null)}
+              >
+                ✕
+              </Button>
+            </div>
           </div>
         </Alert>
       )}

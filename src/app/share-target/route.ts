@@ -5,48 +5,50 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const candidateFiles: File[] = [];
+    const candidateFiles: { name: string; type: string; base64: string }[] = [];
+    const allEntries = Array.from(formData.entries());
 
-    const candidates = [
-      ...formData.getAll('files'),
-      ...formData.getAll('file'),
-      ...formData.getAll('image'),
-      ...formData.getAll('receipt'),
-    ];
+    for (let idx = 0; idx < allEntries.length; idx++) {
+      const [key, value] = allEntries[idx];
 
-    for (const [key, value] of formData.entries()) {
-      if (!candidates.includes(value)) {
-        candidates.push(value);
-      }
-    }
-
-    for (const item of candidates) {
-      if (item && typeof item === 'object' && typeof (item as any).arrayBuffer === 'function') {
-        candidateFiles.push(item as File);
+      if (value && typeof value === 'object' && typeof (value as any).arrayBuffer === 'function') {
+        const file = value as File;
+        if (typeof file.size === 'number' ? file.size > 0 : true) {
+          const buffer = await file.arrayBuffer();
+          const base64 = Buffer.from(buffer).toString('base64');
+          candidateFiles.push({
+            name: file.name || `shared-bill-${Date.now()}-${idx + 1}`,
+            type: file.type || (file.name?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+            base64,
+          });
+        }
+      } else if (typeof value === 'string') {
+        if (value.startsWith('data:image/') || value.startsWith('data:application/pdf')) {
+          const mime = value.substring(5, value.indexOf(';'));
+          const base64Data = value.substring(value.indexOf(',') + 1);
+          candidateFiles.push({
+            name: `shared-bill-${Date.now()}-${idx + 1}.${mime.includes('pdf') ? 'pdf' : 'jpg'}`,
+            type: mime,
+            base64: base64Data,
+          });
+        }
       }
     }
 
     if (candidateFiles.length === 0) {
+      const debugSummary = allEntries
+        .map(([k, v]) => `${k}:${typeof v === 'object' ? `file(${(v as any).size},${(v as any).type})` : `str(${typeof v === 'string' ? JSON.stringify(v.substring(0, 30)) : typeof v})`}`)
+        .join(';');
       return NextResponse.redirect(
-        new URL(`/transactions/group?share_warn=server_no_files&ts=${Date.now()}`, request.url),
+        new URL(
+          `/transactions/group?share_warn=server_no_files&source=server&debug=${encodeURIComponent(debugSummary || 'empty_server_form')}&ts=${Date.now()}`,
+          request.url
+        ),
         303
       );
     }
 
-    // Convert candidate files to base64 payloads to inject into client-side cache & IndexedDB
-    const filePayloads = await Promise.all(
-      candidateFiles.map(async (file, idx) => {
-        const buffer = await file.arrayBuffer();
-        const base64 = Buffer.from(buffer).toString('base64');
-        return {
-          name: file.name || `shared-bill-${Date.now()}-${idx + 1}`,
-          type: file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
-          base64,
-        };
-      })
-    );
-
-    const safePayloadJson = JSON.stringify(filePayloads).replace(/</g, '\\u003c');
+    const safePayloadJson = JSON.stringify(candidateFiles).replace(/</g, '\\u003c');
     const redirectTarget = `/transactions/group?shared=${candidateFiles.length}&ts=${Date.now()}`;
 
     const html = `<!DOCTYPE html>
@@ -102,11 +104,11 @@ export async function POST(request: Request) {
           for (let i = 0; i < files.length; i++) {
             const f = files[i];
             const byteCharacters = atob(f.base64);
-            const byteNumbers = new Array(byteCharacters.length);
+            const byteNumbers = new Uint8Array(byteCharacters.length);
             for (let j = 0; j < byteCharacters.length; j++) {
               byteNumbers[j] = byteCharacters.charCodeAt(j);
             }
-            const blob = new Blob([new Uint8Array(byteNumbers)], { type: f.type });
+            const blob = new Blob([byteNumbers], { type: f.type });
             const response = new Response(blob, {
               headers: {
                 'Content-Type': f.type,
@@ -139,11 +141,11 @@ export async function POST(request: Request) {
 
           for (const f of files) {
             const byteCharacters = atob(f.base64);
-            const byteNumbers = new Array(byteCharacters.length);
+            const byteNumbers = new Uint8Array(byteCharacters.length);
             for (let j = 0; j < byteCharacters.length; j++) {
               byteNumbers[j] = byteCharacters.charCodeAt(j);
             }
-            const blob = new Blob([new Uint8Array(byteNumbers)], { type: f.type });
+            const blob = new Blob([byteNumbers], { type: f.type });
             await new Promise((res, rej) => {
               const tx = db.transaction(STORE_NAME, 'readwrite');
               tx.objectStore(STORE_NAME).put({
@@ -177,7 +179,7 @@ export async function POST(request: Request) {
     console.error('Error processing share-target POST:', error);
     const safeErr = encodeURIComponent(error?.message || 'server_post_error');
     return NextResponse.redirect(
-      new URL(`/transactions/group?share_err=${safeErr}&ts=${Date.now()}`, request.url),
+      new URL(`/transactions/group?share_err=${safeErr}&source=server&ts=${Date.now()}`, request.url),
       303
     );
   }
