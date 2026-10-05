@@ -4,7 +4,10 @@
  * store name, date, and itemized split transactions matched to categories.
  */
 
+export const maxDuration = 60;
+
 import {ai} from '@/ai/genkit';
+
 import {z} from 'genkit';
 
 import {googleAI} from '@genkit-ai/google-genai';
@@ -93,7 +96,8 @@ IMPORTANT RULES:
 - Always choose exact category and subcategory names from the provided hierarchy whenever a logical match exists.
 - If a microcategory matches the item (e.g. category "Food" -> subcategory "Dairy" -> microcategory "Milk"), set microcategory accordingly.
 - Keep amounts numeric (positive numbers).
-- If the receipt is long, capture all distinct items and their amounts accurately.
+- Keep descriptions concise and clear (e.g. "Tandur Turdal", "Raw Rice", "Kitkat 111g").
+- If the receipt is long, capture all distinct items and their amounts accurately without unnecessarily verbose per-item notes.
 
 Receipt Document: {{media url=imageDataUri}}`,
 });
