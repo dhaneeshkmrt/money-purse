@@ -12,8 +12,9 @@ const ALLOWED_ORIGINS = [
 
 function getCorsHeaders(origin?: string) {
   const headers: Record<string, string> = {
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-Id",
+    "Access-Control-Expose-Headers": "X-Final-Url, Content-Disposition, Content-Type",
     Vary: "Origin",
   };
 
@@ -40,6 +41,10 @@ export async function OPTIONS(request: NextRequest) {
     status: 204,
     headers: getCorsHeaders(request.headers.get("origin") || undefined),
   });
+}
+
+export async function HEAD(request: NextRequest) {
+  return GET(request);
 }
 
 export async function GET(request: NextRequest) {
@@ -70,7 +75,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Rate Limiting Check
+  const isResolve = searchParams.get("resolve") === "true" || searchParams.get("action") === "resolve";
+
+  // Rate Limiting Check (Skip heavy rate-limit for light URL resolution, or include it)
   const rateLimit = await checkDownloadRateLimit(request);
   const corsHeaders = getCorsHeaders(request.headers.get("origin") || undefined);
 
@@ -120,6 +127,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    let finalUrl = upstreamResponse.url || targetUrl;
+    if (finalUrl.includes("AnnPdfOpen.aspx?Pname=")) {
+      const pnameMatch = finalUrl.match(/Pname=([^&]+)/i);
+      if (pnameMatch && pnameMatch[1]) {
+        finalUrl = `https://www.bseindia.com/xml-data/corpfiling/AttachHis/${pnameMatch[1]}`;
+      }
+    }
+
+    // If caller only needs the resolved URL
+    if (isResolve) {
+      return NextResponse.json(
+        {
+          success: true,
+          originalUrl: targetUrl,
+          finalUrl,
+          status: upstreamResponse.status,
+          contentType: upstreamResponse.headers.get("content-type"),
+        },
+        { headers: rateLimitHeaders }
+      );
+    }
+
     const contentType =
       upstreamResponse.headers.get("content-type")?.split(";")[0] ||
       "application/octet-stream";
@@ -129,6 +158,7 @@ export async function GET(request: NextRequest) {
       "Content-Type": contentType,
       "Content-Disposition": `attachment; filename="${filename}"`,
       "Cache-Control": "no-store",
+      "X-Final-Url": finalUrl,
       ...rateLimitHeaders,
     });
 
