@@ -6,32 +6,48 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const candidateFiles: { name: string; type: string; base64: string }[] = [];
-    const allEntries = Array.from(formData.entries());
+    const seenNames = new Set<string>();
 
-    for (let idx = 0; idx < allEntries.length; idx++) {
-      const [key, value] = allEntries[idx];
-
+    const processItem = async (value: any, fallbackName: string) => {
+      if (!value) return;
       if (value && typeof value === 'object' && typeof (value as any).arrayBuffer === 'function') {
         const file = value as File;
-        if (typeof file.size === 'number' ? file.size > 0 : true) {
-          const buffer = await file.arrayBuffer();
+        const buffer = await file.arrayBuffer();
+        if (buffer.byteLength > 0) {
+          const name = file.name || fallbackName;
+          const type = file.type || (name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
           const base64 = Buffer.from(buffer).toString('base64');
-          candidateFiles.push({
-            name: file.name || `shared-bill-${Date.now()}-${idx + 1}`,
-            type: file.type || (file.name?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
-            base64,
-          });
+          if (!seenNames.has(`${name}-${base64.length}`)) {
+            seenNames.add(`${name}-${base64.length}`);
+            candidateFiles.push({ name, type, base64 });
+          }
         }
       } else if (typeof value === 'string') {
         if (value.startsWith('data:image/') || value.startsWith('data:application/pdf')) {
           const mime = value.substring(5, value.indexOf(';'));
           const base64Data = value.substring(value.indexOf(',') + 1);
-          candidateFiles.push({
-            name: `shared-bill-${Date.now()}-${idx + 1}.${mime.includes('pdf') ? 'pdf' : 'jpg'}`,
-            type: mime,
-            base64: base64Data,
-          });
+          const name = `${fallbackName}.${mime.includes('pdf') ? 'pdf' : 'jpg'}`;
+          if (!seenNames.has(`${name}-${base64Data.length}`)) {
+            seenNames.add(`${name}-${base64Data.length}`);
+            candidateFiles.push({ name, type: mime, base64: base64Data });
+          }
         }
+      }
+    };
+
+    const knownKeys = ['files', 'file', 'image', 'photos', 'receipt', 'documents'];
+    for (const key of knownKeys) {
+      const items = formData.getAll(key);
+      for (let i = 0; i < items.length; i++) {
+        await processItem(items[i], `shared-bill-${Date.now()}-${candidateFiles.length + 1}`);
+      }
+    }
+
+    const allEntries = Array.from(formData.entries());
+    for (let idx = 0; idx < allEntries.length; idx++) {
+      const [key, value] = allEntries[idx];
+      if (!knownKeys.includes(key)) {
+        await processItem(value, `shared-bill-${Date.now()}-${candidateFiles.length + 1}`);
       }
     }
 

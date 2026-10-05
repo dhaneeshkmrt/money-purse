@@ -36,15 +36,7 @@ export default function DashboardPage() {
       <DashboardStats transactions={filteredTransactions} year={selectedYear} month={selectedMonth} />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Daily Expense Overview</CardTitle>
-            <CardDescription>Your spending by day for the selected period.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <DailyExpenseChart transactions={filteredTransactions} year={selectedYear} month={selectedMonth} />
-          </CardContent>
-        </Card>
+        <DailyExpenseChart transactions={filteredTransactions} year={selectedYear} month={selectedMonth} />
         <Card>
           <CardHeader>
             <CardTitle>Monthly Category Expenses</CardTitle>

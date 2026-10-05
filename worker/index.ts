@@ -9,49 +9,65 @@ self.addEventListener('fetch', (event: any) => {
   if (event.request.method === 'POST' && url.pathname.replace(/\/$/, '') === '/share-target') {
     event.respondWith(
       (async () => {
-        // Clone request BEFORE reading formData, so if SW fails or has 0 files,
-        // we can still forward the original multipart request to the server!
-        let reqForFallback: Request | null = null;
         try {
-          reqForFallback = event.request.clone();
-        } catch (cloneErr) {
-          console.warn('[ServiceWorker] Could not clone share-target request:', cloneErr);
-        }
-
-        try {
+          // Direct formData parse without cloning - cloning tee's the body stream which breaks native Android IPC file descriptors
           const formData = await event.request.formData();
           const filesToSave: UnifiedFilePayload[] = [];
-          const allEntries = Array.from(formData.entries()) as [string, any][];
+          const seenFiles = new Set<string>();
 
-          for (let idx = 0; idx < allEntries.length; idx++) {
-            const [key, value] = allEntries[idx];
-            if (value && typeof value === 'object' && (value instanceof Blob || typeof (value as any).arrayBuffer === 'function')) {
-              const fileObj = value as File;
-              // Check if file has data (not empty 0-byte stream)
-              if (typeof fileObj.size === 'number' ? fileObj.size > 0 : true) {
-                const name = fileObj.name || `shared-bill-${Date.now()}-${idx + 1}`;
-                const type = fileObj.type || (name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+          // Helper to process candidate items
+          const processItem = async (item: any, fallbackName: string) => {
+            if (!item) return;
 
-                if (typeof (fileObj as any).arrayBuffer === 'function') {
-                  const buffer = await fileObj.arrayBuffer();
+            if (typeof item === 'object' && (item instanceof Blob || typeof (item as any).arrayBuffer === 'function')) {
+              const fileObj = item as File;
+              const name = fileObj.name || fallbackName;
+              const type = fileObj.type || (name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+
+              if (typeof (fileObj as any).arrayBuffer === 'function') {
+                const buffer = await fileObj.arrayBuffer();
+                if (buffer.byteLength > 0 && !seenFiles.has(`${name}-${buffer.byteLength}`)) {
+                  seenFiles.add(`${name}-${buffer.byteLength}`);
                   filesToSave.push({ name, type, data: buffer });
-                } else if (fileObj instanceof Blob) {
-                  filesToSave.push({ name, type, data: fileObj });
                 }
+              } else if (fileObj instanceof Blob && fileObj.size > 0 && !seenFiles.has(`${name}-${fileObj.size}`)) {
+                seenFiles.add(`${name}-${fileObj.size}`);
+                filesToSave.push({ name, type, data: fileObj });
               }
-            } else if (typeof value === 'string') {
-              // Check if value is a data URI
-              if (value.startsWith('data:image/') || value.startsWith('data:application/pdf')) {
-                const mime = value.substring(5, value.indexOf(';'));
-                const base64Data = value.substring(value.indexOf(',') + 1);
+            } else if (typeof item === 'string') {
+              if (item.startsWith('data:image/') || item.startsWith('data:application/pdf')) {
+                const mime = item.substring(5, item.indexOf(';'));
+                const base64Data = item.substring(item.indexOf(',') + 1);
                 const byteCharacters = atob(base64Data);
                 const byteNumbers = new Uint8Array(byteCharacters.length);
                 for (let i = 0; i < byteCharacters.length; i++) {
                   byteNumbers[i] = byteCharacters.charCodeAt(i);
                 }
-                const name = `shared-bill-${Date.now()}-${idx + 1}.${mime.includes('pdf') ? 'pdf' : 'jpg'}`;
-                filesToSave.push({ name, type: mime, data: byteNumbers.buffer });
+                const ext = mime.includes('pdf') ? 'pdf' : 'jpg';
+                const name = `${fallbackName}.${ext}`;
+                if (!seenFiles.has(`${name}-${byteNumbers.length}`)) {
+                  seenFiles.add(`${name}-${byteNumbers.length}`);
+                  filesToSave.push({ name, type: mime, data: byteNumbers.buffer });
+                }
               }
+            }
+          };
+
+          // 1. Check known field keys defined in manifest.json and standard Android implementations
+          const knownFieldKeys = ['files', 'file', 'image', 'photos', 'receipt', 'documents'];
+          for (const key of knownFieldKeys) {
+            const values = formData.getAll(key);
+            for (let i = 0; i < values.length; i++) {
+              await processItem(values[i], `shared-bill-${Date.now()}-${filesToSave.length + 1}`);
+            }
+          }
+
+          // 2. Also inspect every single entry in formData in case a custom field name was used
+          const allEntries = Array.from(formData.entries()) as [string, any][];
+          for (let idx = 0; idx < allEntries.length; idx++) {
+            const [key, value] = allEntries[idx];
+            if (!knownFieldKeys.includes(key)) {
+              await processItem(value, `shared-bill-${Date.now()}-${filesToSave.length + 1}`);
             }
           }
 
@@ -76,32 +92,13 @@ self.addEventListener('fetch', (event: any) => {
             return Response.redirect(new URL(redirectTarget, event.request.url).href, 303);
           }
 
-          // If SW extracted 0 files (e.g. Android WebAPK permission boundary issue),
-          // forward the request to the Next.js server route handler!
-          console.warn('[ServiceWorker] 0 files extracted in Service Worker. Forwarding to server route...');
-          if (reqForFallback) {
-            try {
-              return await fetch(reqForFallback);
-            } catch (fetchErr) {
-              console.warn('[ServiceWorker] Fallback server fetch failed:', fetchErr);
-            }
-          }
-
-          // If fallback also failed or is offline:
-          const debugSummary = allEntries
-            .map(([k, v]: [string, any]) => `${k}:${typeof v === 'object' ? (v instanceof Blob ? `blob(${v.size},${v.type})` : 'obj') : typeof v}`)
-            .join(';');
-          const fallbackUrl = `/transactions/group?share_warn=no_files_found&source=sw&debug=${encodeURIComponent(debugSummary || 'empty_form')}&ts=${Date.now()}`;
+          // If no files found, redirect cleanly with debug info from incoming formData keys
+          const formKeys = Array.from(formData.keys()).join(',') || 'empty_form';
+          console.warn('[ServiceWorker] POST /share-target received with 0 files. Keys found:', formKeys);
+          const fallbackUrl = `/transactions/group?share_warn=no_files_found&source=sw&debug=${encodeURIComponent(formKeys)}&ts=${Date.now()}`;
           return Response.redirect(new URL(fallbackUrl, event.request.url).href, 303);
         } catch (err: any) {
           console.error('[ServiceWorker] Error processing shared files:', err);
-          if (reqForFallback) {
-            try {
-              return await fetch(reqForFallback);
-            } catch (fallbackErr) {
-              // ignore
-            }
-          }
           const safeMsg = encodeURIComponent(err?.message || 'sw_parse_error');
           const errUrl = `/transactions/group?share_err=${safeMsg}&source=sw&ts=${Date.now()}`;
           return Response.redirect(new URL(errUrl, event.request.url).href, 303);

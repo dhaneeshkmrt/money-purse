@@ -54,6 +54,20 @@
             ".jpeg",
             ".png"
           ]
+        },
+        {
+          "name": "file",
+          "accept": [
+            "image/*",
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "application/pdf",
+            ".pdf",
+            ".jpg",
+            ".jpeg",
+            ".png"
+          ]
         }
       ]
     }

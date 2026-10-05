@@ -38,6 +38,7 @@ interface DayTransactionsDialogProps {
   onOpenChange: (open: boolean) => void;
   date: Date | null;
   transactions: Transaction[];
+  excludedCount?: number;
 }
 
 type SortKey = 'time' | 'amount';
@@ -48,6 +49,7 @@ export default function DayTransactionsDialog({
   onOpenChange,
   date,
   transactions,
+  excludedCount = 0,
 }: DayTransactionsDialogProps) {
   const { categories, editTransaction, deleteTransaction } = useApp();
   const { toast } = useToast();
@@ -90,6 +92,11 @@ export default function DayTransactionsDialog({
            <div className="flex justify-between items-center pt-2">
             <DialogDescription>
               Total spent: <span className="font-bold">{formatCurrency(totalAmount)}</span>
+              {excludedCount > 0 && (
+                <span className="block sm:inline sm:ml-2 text-xs text-amber-600 dark:text-amber-400 font-normal">
+                  ({excludedCount} transaction{excludedCount > 1 ? 's' : ''} excluded)
+                </span>
+              )}
             </DialogDescription>
              <Select value={`${sortKey}-${sortOrder}`} onValueChange={(value) => {
               const [key, order] = value.split('-') as [SortKey, SortOrder];
