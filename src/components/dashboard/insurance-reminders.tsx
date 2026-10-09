@@ -188,6 +188,50 @@ export default function InsuranceReminders() {
     };
   }, [insurances]);
 
+  // Find the policy expiring next when 30, 45, and 60 days are all 0
+  const { nextExpiringPolicy, nextExpiringDays } = useMemo(() => {
+    if (!insurances || insurances.length === 0) {
+      return { nextExpiringPolicy: null, nextExpiringDays: null };
+    }
+
+    const today = startOfDay(new Date());
+    const valid = insurances.filter((p) => Boolean(p.expiryDate));
+    if (valid.length === 0) {
+      return { nextExpiringPolicy: null, nextExpiringDays: null };
+    }
+
+    // Policies expiring today or in the future
+    const future = valid
+      .filter((p) => differenceInDays(startOfDay(parseISO(p.expiryDate)), today) >= 0)
+      .sort((a, b) => parseISO(a.expiryDate).getTime() - parseISO(b.expiryDate).getTime());
+
+    const chosen =
+      future.length > 0
+        ? future[0]
+        : [...valid].sort(
+            (a, b) => parseISO(b.expiryDate).getTime() - parseISO(a.expiryDate).getTime()
+          )[0];
+
+    if (!chosen) {
+      return { nextExpiringPolicy: null, nextExpiringDays: null };
+    }
+
+    const days = differenceInDays(startOfDay(parseISO(chosen.expiryDate)), today);
+    return { nextExpiringPolicy: chosen, nextExpiringDays: days };
+  }, [insurances]);
+
+  const hasNoExpiringSoon =
+    thirtyDays.length === 0 &&
+    fortyFiveDays.length === 0 &&
+    sixtyDays.length === 0 &&
+    nextExpiringPolicy !== null;
+
+  useEffect(() => {
+    if (hasNoExpiringSoon && activeTab !== 'all' && activeTab !== 'renewed') {
+      setActiveTab('all');
+    }
+  }, [hasNoExpiringSoon, activeTab]);
+
   const handleEdit = (policy: Insurance) => {
     setSelectedInsurance(policy);
     setDialogOpen(true);
@@ -308,7 +352,9 @@ export default function InsuranceReminders() {
                       ? 'text-red-600 dark:text-red-400 font-semibold'
                       : is45Days
                       ? 'text-blue-600 dark:text-blue-400'
-                      : 'text-amber-600 dark:text-amber-400'
+                      : days <= 60
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-muted-foreground'
                   )}
                 >
                   Expires in {days} day{days === 1 ? '' : 's'} ({format(expiryDate, 'dd MMM yyyy')})
@@ -362,12 +408,19 @@ export default function InsuranceReminders() {
               >
                 45 Days · Ready for Porting
               </Badge>
-            ) : (
+            ) : days <= 60 ? (
               <Badge
                 variant="outline"
                 className="text-[10px] uppercase font-bold border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10"
               >
                 60 Days · Upcoming
+              </Badge>
+            ) : (
+              <Badge
+                variant="outline"
+                className="text-[10px] uppercase font-bold border-border text-muted-foreground"
+              >
+                Upcoming
               </Badge>
             )}
 
@@ -487,110 +540,201 @@ export default function InsuranceReminders() {
 
           {/* Category Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-3">
-            {/* 30 Days Card */}
-            <button
-              type="button"
-              onClick={() => setActiveTab(activeTab === '30' ? 'all' : '30')}
-              className={cn(
-                'flex flex-col p-3 rounded-lg border text-left transition-all',
-                activeTab === '30'
-                  ? 'border-red-500 bg-red-500/10 dark:bg-red-950/30 ring-1 ring-red-500'
-                  : 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10 dark:bg-red-950/15'
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-red-600 dark:text-red-400">
-                  1. ≤ 30 Days
-                </span>
-                <Badge
-                  variant="outline"
-                  className="text-[10px] py-0 px-1.5 h-4 border-red-500/40 text-red-600 dark:text-red-400 bg-red-500/10"
-                >
-                  Urgent
-                </Badge>
-              </div>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-bold text-red-600 dark:text-red-400">
-                  {thirtyDays.length}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {thirtyDays.length === 1 ? 'policy' : 'policies'}
-                </span>
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Immediate renewal needed
-              </p>
-            </button>
+            {hasNoExpiringSoon && nextExpiringPolicy ? (
+              /* Next Expiring Policy Card (shown when 30, 45, and 60 days are all 0) */
+              <div
+                onClick={() => setActiveTab('all')}
+                className={cn(
+                  'sm:col-span-3 flex flex-col justify-between p-3 rounded-lg border text-left transition-all cursor-pointer group',
+                  activeTab === 'all'
+                    ? 'border-primary/50 bg-primary/5 dark:bg-primary/10 ring-1 ring-primary/50'
+                    : 'border-border bg-card/60 hover:bg-muted/30'
+                )}
+              >
+                <div className="flex items-center justify-between pb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="h-4 w-4 text-primary" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-primary">
+                      Next Expiring Policy
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {nextExpiringDays !== null && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] py-0 px-1.5 h-4 border-primary/30 text-primary bg-primary/10 font-normal"
+                      >
+                        {nextExpiringDays === 0
+                          ? 'Expires Today'
+                          : nextExpiringDays < 0
+                          ? `Expired ${Math.abs(nextExpiringDays)}d ago`
+                          : `In ${nextExpiringDays} days`}
+                      </Badge>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-muted-foreground hover:text-foreground opacity-60 group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEdit(nextExpiringPolicy);
+                      }}
+                      title="Edit Policy"
+                    >
+                      <Edit className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
 
-            {/* 45 Days (Ready for Porting) Card */}
-            <button
-              type="button"
-              onClick={() => setActiveTab(activeTab === '45' ? 'all' : '45')}
-              className={cn(
-                'flex flex-col p-3 rounded-lg border text-left transition-all',
-                activeTab === '45'
-                  ? 'border-blue-500 bg-blue-500/10 dark:bg-blue-950/30 ring-1 ring-blue-500'
-                  : 'border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 dark:bg-blue-950/15'
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                  2. 45 Days
-                </span>
-                <Badge
-                  variant="outline"
-                  className="text-[10px] py-0 px-1.5 h-4 border-blue-500/40 text-blue-600 dark:text-blue-400 bg-blue-500/10"
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-border/50">
+                  <div className="min-w-0">
+                    <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
+                      Name
+                    </span>
+                    <span
+                      className="text-sm font-semibold text-foreground truncate block group-hover:text-primary transition-colors"
+                      title={nextExpiringPolicy.name || nextExpiringPolicy.provider}
+                    >
+                      {nextExpiringPolicy.name || nextExpiringPolicy.provider}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
+                      Insurer
+                    </span>
+                    <span
+                      className="text-sm font-medium text-foreground truncate block"
+                      title={nextExpiringPolicy.provider}
+                    >
+                      {nextExpiringPolicy.provider}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
+                      Amount
+                    </span>
+                    <span className="text-sm font-bold text-primary block">
+                      {formatCurrency(nextExpiringPolicy.premiumAmount)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
+                      Expiry Date
+                    </span>
+                    <span className="text-sm font-semibold text-foreground block">
+                      {format(parseISO(nextExpiringPolicy.expiryDate), 'dd MMM yyyy')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* 30 Days Card */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(activeTab === '30' ? 'all' : '30')}
+                  className={cn(
+                    'flex flex-col p-3 rounded-lg border text-left transition-all',
+                    activeTab === '30'
+                      ? 'border-red-500 bg-red-500/10 dark:bg-red-950/30 ring-1 ring-red-500'
+                      : 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10 dark:bg-red-950/15'
+                  )}
                 >
-                  Porting
-                </Badge>
-              </div>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                  {fortyFiveDays.length}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {fortyFiveDays.length === 1 ? 'policy' : 'policies'}
-                </span>
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Ready for Porting
-              </p>
-            </button>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-red-600 dark:text-red-400">
+                      1. ≤ 30 Days
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] py-0 px-1.5 h-4 border-red-500/40 text-red-600 dark:text-red-400 bg-red-500/10"
+                    >
+                      Urgent
+                    </Badge>
+                  </div>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-2xl font-bold text-red-600 dark:text-red-400">
+                      {thirtyDays.length}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {thirtyDays.length === 1 ? 'policy' : 'policies'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Immediate renewal needed
+                  </p>
+                </button>
 
-            {/* 60 Days Card */}
-            <button
-              type="button"
-              onClick={() => setActiveTab(activeTab === '60' ? 'all' : '60')}
-              className={cn(
-                'flex flex-col p-3 rounded-lg border text-left transition-all',
-                activeTab === '60'
-                  ? 'border-amber-500 bg-amber-500/10 dark:bg-amber-950/30 ring-1 ring-amber-500'
-                  : 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 dark:bg-amber-950/15'
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                  3. 60 Days
-                </span>
-                <Badge
-                  variant="outline"
-                  className="text-[10px] py-0 px-1.5 h-4 border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10"
+                {/* 45 Days (Ready for Porting) Card */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(activeTab === '45' ? 'all' : '45')}
+                  className={cn(
+                    'flex flex-col p-3 rounded-lg border text-left transition-all',
+                    activeTab === '45'
+                      ? 'border-blue-500 bg-blue-500/10 dark:bg-blue-950/30 ring-1 ring-blue-500'
+                      : 'border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 dark:bg-blue-950/15'
+                  )}
                 >
-                  Upcoming
-                </Badge>
-              </div>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                  {sixtyDays.length}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {sixtyDays.length === 1 ? 'policy' : 'policies'}
-                </span>
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Upcoming renewal
-              </p>
-            </button>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                      2. 45 Days
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] py-0 px-1.5 h-4 border-blue-500/40 text-blue-600 dark:text-blue-400 bg-blue-500/10"
+                    >
+                      Porting
+                    </Badge>
+                  </div>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {fortyFiveDays.length}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {fortyFiveDays.length === 1 ? 'policy' : 'policies'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Ready for Porting
+                  </p>
+                </button>
+
+                {/* 60 Days Card */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(activeTab === '60' ? 'all' : '60')}
+                  className={cn(
+                    'flex flex-col p-3 rounded-lg border text-left transition-all',
+                    activeTab === '60'
+                      ? 'border-amber-500 bg-amber-500/10 dark:bg-amber-950/30 ring-1 ring-amber-500'
+                      : 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 dark:bg-amber-950/15'
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                      3. 60 Days
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] py-0 px-1.5 h-4 border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10"
+                    >
+                      Upcoming
+                    </Badge>
+                  </div>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                      {sixtyDays.length}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {sixtyDays.length === 1 ? 'policy' : 'policies'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Upcoming renewal
+                  </p>
+                </button>
+              </>
+            )}
 
             {/* Renewed Card */}
             <button
@@ -632,27 +776,47 @@ export default function InsuranceReminders() {
         <CardContent>
           <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)}>
             <TabsList className="mb-3 flex-wrap">
-              <TabsTrigger value="all" className="gap-1.5 text-xs">
-                All Expiring ({allExpiring.length})
-              </TabsTrigger>
-              <TabsTrigger value="30" className="gap-1.5 text-xs text-red-600 dark:text-red-400">
-                ≤ 30 Days ({thirtyDays.length})
-              </TabsTrigger>
-              <TabsTrigger value="45" className="gap-1.5 text-xs text-blue-600 dark:text-blue-400">
-                45 Days · Porting ({fortyFiveDays.length})
-              </TabsTrigger>
-              <TabsTrigger value="60" className="gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                60 Days ({sixtyDays.length})
-              </TabsTrigger>
-              <TabsTrigger value="renewed" className="gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="h-3 w-3" /> Renewed ({renewedPolicies.length})
-              </TabsTrigger>
+              {hasNoExpiringSoon ? (
+                <>
+                  <TabsTrigger value="all" className="gap-1.5 text-xs">
+                    Next Expiring Policy
+                  </TabsTrigger>
+                  <TabsTrigger value="renewed" className="gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3 w-3" /> Renewed ({renewedPolicies.length})
+                  </TabsTrigger>
+                </>
+              ) : (
+                <>
+                  <TabsTrigger value="all" className="gap-1.5 text-xs">
+                    All Expiring ({allExpiring.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="30" className="gap-1.5 text-xs text-red-600 dark:text-red-400">
+                    ≤ 30 Days ({thirtyDays.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="45" className="gap-1.5 text-xs text-blue-600 dark:text-blue-400">
+                    45 Days · Porting ({fortyFiveDays.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="60" className="gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                    60 Days ({sixtyDays.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="renewed" className="gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3 w-3" /> Renewed ({renewedPolicies.length})
+                  </TabsTrigger>
+                </>
+              )}
             </TabsList>
 
             <TabsContent value="all">
               {allExpiring.length > 0 ? (
                 <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
                   {allExpiring.map((p) => renderPolicyItem(p, false))}
+                </div>
+              ) : nextExpiringPolicy ? (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground px-0.5">
+                    <span>No policies expiring in ≤ 60 days. Next policy to expire:</span>
+                  </div>
+                  {renderPolicyItem(nextExpiringPolicy, false)}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
