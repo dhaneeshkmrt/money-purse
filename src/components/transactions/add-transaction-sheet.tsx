@@ -188,30 +188,80 @@ export default function AddTransactionSheet({
     if (!Number.isFinite(watchedAmount) || watchedAmount === 0 || isEditing) return [];
 
     const amountNum = watchedAmount;
-    const amountStr = String(amountNum);
-    const escapedAmount = amountStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regexPattern = Number.isInteger(amountNum)
-      ? new RegExp(`(?:^|[^0-9])${escapedAmount}(?:\\.00?)?(?:[^0-9]|$)`)
-      : new RegExp(`(?:^|[^0-9])${escapedAmount}0?(?:[^0-9]|$)`);
+    const targetAmt = Math.abs(amountNum);
+    const cleanInput = formattedValue ? formattedValue.replace(/,/g, '').trim() : '';
+    const decimalMatch = cleanInput.match(/\.(\d*)$/);
+    const hasExplicitDecimalDigits = decimalMatch !== null && decimalMatch[1].length > 0;
+    const isSearchInteger = !hasExplicitDecimalDigits && (Number.isInteger(targetAmt) || Math.abs(targetAmt - Math.round(targetAmt)) < 0.001);
+
+    const escapedAmount = String(isSearchInteger ? Math.round(targetAmt) : targetAmt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const descRegexPattern = isSearchInteger
+      ? new RegExp(`(?:^|[^0-9])${escapedAmount}(?:\\.\\d+)?(?:[^0-9]|$)`)
+      : new RegExp(`(?:^|[^0-9])${escapedAmount}\\d*(?:[^0-9]|$)`);
 
     return filteredTransactions
       .map(t => {
-        const isAmountMatch = t.amount === amountNum;
+        const tAmt = Number.isFinite(t.amount) ? Math.abs(t.amount) : null;
+        if (tAmt === null) {
+          return {
+            ...t,
+            isExactAmountMatch: false,
+            isFloatAmountMatch: false,
+            isAmountMatch: false,
+            isDescMatch: false,
+          };
+        }
+
+        const isExactAmountMatch = Math.abs(tAmt - targetAmt) < 0.001;
+        let isFloatAmountMatch = false;
+
+        if (!isExactAmountMatch) {
+          if (isSearchInteger) {
+            // User searched integer like 250, 34, 50 -> matches floating transactions like 250.51, 34.75, 50.01
+            isFloatAmountMatch = Math.trunc(tAmt) === Math.round(targetAmt);
+          } else {
+            // User searched with decimal like 250.5 -> matches 250.51, 250.50
+            const tFixedStr = tAmt.toFixed(2);
+            const searchDecStr = hasExplicitDecimalDigits ? cleanInput.replace(/^-/, '') : String(targetAmt);
+            isFloatAmountMatch = tFixedStr.startsWith(searchDecStr);
+          }
+        }
+
+        const isAmountMatch = isExactAmountMatch || isFloatAmountMatch;
         let isDescMatch = false;
 
         if (t.description) {
           const strippedDesc = t.description.replace(/,/g, '');
-          isDescMatch = regexPattern.test(strippedDesc) || strippedDesc.includes(amountStr);
+          isDescMatch = descRegexPattern.test(strippedDesc);
         }
 
         return {
           ...t,
+          isExactAmountMatch,
+          isFloatAmountMatch,
           isAmountMatch,
           isDescMatch,
         };
       })
-      .filter(t => t.isAmountMatch || t.isDescMatch);
-  }, [watchedAmount, filteredTransactions, isEditing]);
+      .filter(t => t.isAmountMatch || t.isDescMatch)
+      .sort((a, b) => {
+        const getPriority = (item: { isExactAmountMatch: boolean; isAmountMatch: boolean; isDescMatch: boolean }) => {
+          if (item.isExactAmountMatch && item.isDescMatch) return 1;
+          if (item.isExactAmountMatch) return 2;
+          if (item.isAmountMatch && item.isDescMatch) return 3;
+          if (item.isAmountMatch) return 4;
+          return 5;
+        };
+
+        const pA = getPriority(a);
+        const pB = getPriority(b);
+        if (pA !== pB) return pA - pB;
+
+        const dateDiff = (b.date || '').localeCompare(a.date || '');
+        if (dateDiff !== 0) return dateDiff;
+        return (b.time || '').localeCompare(a.time || '');
+      });
+  }, [watchedAmount, formattedValue, filteredTransactions, isEditing]);
 
   const isSelectedMonthLocked = useMemo(() => {
     if (!selectedDate) return false;
@@ -516,6 +566,11 @@ export default function AddTransactionSheet({
                                     {' · '}{t.category}{t.subcategory ? ` › ${t.subcategory}` : ''}{t.microcategory ? ` › ${t.microcategory}` : ''}
                                   </span>
                                   <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground">
+                                    {t.isAmountMatch && !t.isDescMatch && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 font-medium">
+                                        {formatCurrency(t.amount)}
+                                      </span>
+                                    )}
                                     {t.isDescMatch && !t.isAmountMatch && (
                                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-medium">
                                         In desc ({formatCurrency(t.amount)})
@@ -523,7 +578,7 @@ export default function AddTransactionSheet({
                                     )}
                                     {t.isAmountMatch && t.isDescMatch && (
                                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-medium">
-                                        Amount & desc
+                                        {formatCurrency(t.amount)} & desc
                                       </span>
                                     )}
                                     <span>{t.date}</span>
@@ -762,11 +817,15 @@ export default function AddTransactionSheet({
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {t.isAmountMatch && t.isDescMatch ? (
                       <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-medium">
-                        Exact Amount & In Description
+                        {t.isExactAmountMatch ? 'Exact Amount & In Description' : `Matching Amount (${formatCurrency(t.amount)}) & In Description`}
                       </span>
-                    ) : t.isAmountMatch ? (
+                    ) : t.isExactAmountMatch ? (
                       <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 font-medium">
-                        Same Amount ({formatCurrency(t.amount)})
+                        Exact Amount ({formatCurrency(t.amount)})
+                      </span>
+                    ) : t.isFloatAmountMatch ? (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 font-medium">
+                        Matching Amount ({formatCurrency(t.amount)})
                       </span>
                     ) : (
                       <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-medium">
